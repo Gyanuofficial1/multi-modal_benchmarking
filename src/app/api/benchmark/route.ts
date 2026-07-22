@@ -344,12 +344,33 @@ export async function POST(req: NextRequest) {
       const apiKey = process.env.AZURE_OPENAI_API_KEY;
       const endpoint = (process.env.AZURE_OPENAI_ENDPOINT || '').replace(/\/$/, '');
       let deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';
-      if (model.id === 'azure-gpt-4o-mini') {
-        deployment = process.env.AZURE_OPENAI_DEPLOYMENT_GPT_4O_MINI || 'gpt-4o-mini';
-      } else if (model.id === 'azure-gpt-4o') {
-        deployment = process.env.AZURE_OPENAI_DEPLOYMENT_GPT_4O || 'gpt-4o';
-      } else if (model.id === 'azure-deepseek-v4-flash') {
-        deployment = process.env.AZURE_OPENAI_DEPLOYMENT_DEEPSEEK_V4_FLASH || 'DeepSeek-V4-Flash';
+      let apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-02-15-preview';
+
+      // Dynamically resolve environment variables based on the model ID
+      const formattedModelKey = model.id.replace(/^azure-/, '').replace(/[\.-]/g, '_').toUpperCase();
+      const customDeploymentEnv = process.env[`AZURE_OPENAI_DEPLOYMENT_${formattedModelKey}`];
+      const customApiVersionEnv = process.env[`AZURE_OPENAI_API_VERSION_${formattedModelKey}`];
+
+      if (customDeploymentEnv) {
+        deployment = customDeploymentEnv;
+      } else {
+        // Fallbacks for known models
+        if (model.id === 'azure-gpt-5.4-nano') deployment = 'gpt-5.4-nano';
+        else if (model.id === 'azure-gpt-5.4-mini') deployment = 'gpt-5.4-mini';
+        else if (model.id === 'azure-gpt-5-mini') deployment = 'gpt-5-mini';
+        else if (model.id === 'azure-gpt-4.1-mini') deployment = 'gpt-4.1-mini';
+        else if (model.id === 'azure-gpt-4o-min') deployment = 'gpt-4o-min';
+        else if (model.id === 'azure-gpt-4o-mini') deployment = 'gpt-4o-mini';
+        else if (model.id === 'azure-gpt-4o') deployment = 'gpt-4o';
+        else if (model.id === 'azure-deepseek-v4-flash') deployment = 'DeepSeek-V4-Flash';
+        else if (model.id === 'azure-grok-4-1-fast-non-reasoning') deployment = 'Grok-4-1-fast-non-reasoning';
+      }
+
+      if (customApiVersionEnv) {
+        apiVersion = customApiVersionEnv;
+      } else {
+        // Fallbacks for known models
+        if (model.id === 'azure-deepseek-v4-flash') apiVersion = '2024-05-01-preview';
       }
 
 
@@ -370,18 +391,36 @@ export async function POST(req: NextRequest) {
       }
       messages.push({ role: 'user', content: resumeItem.extractedText });
 
-      const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+      let url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'api-key': apiKey,
+      };
+
+      const bodyPayload: any = {
+        response_format: { type: 'json_object' },
+        messages,
+      };
+
+      const customUseV1Env = process.env[`AZURE_OPENAI_USE_V1_PATH_${formattedModelKey}`];
+      let useV1Path = model.id !== 'azure-gpt-4o' && model.id !== 'azure-gpt-4o-mini';
+
+      if (customUseV1Env === 'true') {
+        useV1Path = true;
+      } else if (customUseV1Env === 'false') {
+        useV1Path = false;
+      }
+
+      if (useV1Path) {
+        url = `${endpoint}/openai/v1/chat/completions`;
+        bodyPayload.model = deployment;
+      }
 
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': apiKey,
-        },
-        body: JSON.stringify({
-          response_format: { type: 'json_object' },
-          messages,
-        }),
+        headers,
+        body: JSON.stringify(bodyPayload),
       });
 
       if (!response.ok) {
