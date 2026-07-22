@@ -266,15 +266,9 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
   const [jsonSyntaxError, setJsonSyntaxError] = useState<string | null>(null);
   const [fileProcessingMsg, setFileProcessingMsg] = useState<string | null>(null);
 
-  // Selected models list (Includes Gemini 2.5 Flash, 2.5 Flash Lite, 3.1 Flash Lite)
-  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gpt-4o',
-    'claude-sonnet-5',
-    'mistral-large-latest',
-  ]);
+  // Selected models list (empty by default)
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+
 
   // Sync expected JSON when active resume tab changes
   useEffect(() => {
