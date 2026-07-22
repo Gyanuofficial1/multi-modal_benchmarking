@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar } from '../components/Navbar';
 import { ResumeInputPanel } from '../components/ResumeInputPanel';
 import { SummaryCards } from '../components/Dashboard/SummaryCards';
@@ -8,12 +8,14 @@ import { ComparisonCharts } from '../components/Dashboard/ComparisonCharts';
 import { ModelComparisonTable } from '../components/Dashboard/ModelComparisonTable';
 import { RecommendationWizard } from '../components/Dashboard/RecommendationWizard';
 import { DetailedOutputModal } from '../components/Dashboard/DetailedOutputModal';
+import { LoginScreen } from '../components/LoginScreen';
 import { ModelBenchmarkResult, ProviderApiConfig, ResumeFileItem } from '../types/benchmark';
 import { SUPPORTED_MODELS } from '../services/pricingMatrix';
 import { benchmarkSingleModel } from '../services/aiProviders';
 import { FileText, Archive } from 'lucide-react';
 
 export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
   // All results across batch of resumes
@@ -21,6 +23,16 @@ export default function Home() {
   const [selectedResumeFilter, setSelectedResumeFilter] = useState<string>('ALL');
 
   const [selectedResultModal, setSelectedResultModal] = useState<ModelBenchmarkResult | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    setIsAuthenticated(token === 'session_active_benchmark');
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setIsAuthenticated(false);
+  };
 
   // Run Batch Multi-Model Benchmark with PARALLEL CONCURRENT execution!
   const handleRunBatchBenchmark = async (
@@ -79,6 +91,18 @@ export default function Home() {
       ? allBatchResults
       : allBatchResults.filter((r) => r.resumeFileName === selectedResumeFilter);
 
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="h-8 w-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-cyan-500 selection:text-slate-950">
       {/* Background ambient lighting effects */}
@@ -92,6 +116,7 @@ export default function Home() {
       <Navbar
         onExportResults={handleExportResults}
         hasResults={allBatchResults.length > 0}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}

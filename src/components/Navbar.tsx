@@ -1,16 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Cpu, Download, ShieldCheck } from 'lucide-react';
+import { Cpu, Download, ShieldCheck, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   onExportResults: () => void;
   hasResults: boolean;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onExportResults,
   hasResults,
+  onLogout,
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
@@ -46,6 +48,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Download className="h-4 w-4 text-white" />
               <span>Export Benchmark Report</span>
+            </button>
+          )}
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="flex items-center space-x-1.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-all active:scale-95"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
             </button>
           )}
         </div>
