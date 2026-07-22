@@ -180,6 +180,19 @@ export const SUPPORTED_MODELS: AIModel[] = [
   // 5. Microsoft Azure AI Foundry (Sorted by lowest cost first)
   // ----------------------------------------------------
   {
+    id: 'azure-deepseek-v4-flash',
+    name: 'Azure DeepSeek-V4-Flash',
+    provider: 'azure',
+    providerName: 'Microsoft Azure AI',
+    badgeColor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+    inputCostPer1M: 0.14,
+    outputCostPer1M: 0.28,
+    contextWindow: 128000,
+    description: 'DeepSeek-V4-Flash deployed on Microsoft Azure AI Foundry serverless endpoint.',
+    defaultSimulatedLatencyMs: 450,
+    accuracyMultiplier: 97,
+  },
+  {
     id: 'azure-gpt-4o-mini',
     name: 'Azure GPT-4o mini',
     provider: 'azure',
@@ -192,6 +205,7 @@ export const SUPPORTED_MODELS: AIModel[] = [
     defaultSimulatedLatencyMs: 490,
     accuracyMultiplier: 94,
   },
+
   {
     id: 'azure-gpt-4o',
     name: 'Azure GPT-4o',

@@ -343,7 +343,15 @@ export async function POST(req: NextRequest) {
     else if (model.provider === 'azure') {
       const apiKey = process.env.AZURE_OPENAI_API_KEY;
       const endpoint = (process.env.AZURE_OPENAI_ENDPOINT || '').replace(/\/$/, '');
-      const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';
+      let deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o';
+      if (model.id === 'azure-gpt-4o-mini') {
+        deployment = process.env.AZURE_OPENAI_DEPLOYMENT_GPT_4O_MINI || 'gpt-4o-mini';
+      } else if (model.id === 'azure-gpt-4o') {
+        deployment = process.env.AZURE_OPENAI_DEPLOYMENT_GPT_4O || 'gpt-4o';
+      } else if (model.id === 'azure-deepseek-v4-flash') {
+        deployment = process.env.AZURE_OPENAI_DEPLOYMENT_DEEPSEEK_V4_FLASH || 'DeepSeek-V4-Flash';
+      }
+
 
       if (!apiKey || !endpoint) {
         return NextResponse.json(
