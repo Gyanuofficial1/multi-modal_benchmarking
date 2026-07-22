@@ -321,3 +321,11 @@ export function formatInrPer1M(amountUsd: number): string {
   if (inr < 1) return `₹${inr.toFixed(2)}`;
   return `₹${inr.toFixed(2)}`;
 }
+
+export function formatLatency(latencyMs: number): string {
+  if (latencyMs >= 1000) {
+    return `${(latencyMs / 1000).toFixed(2)} s`;
+  }
+  return `${latencyMs} ms`;
+}
+

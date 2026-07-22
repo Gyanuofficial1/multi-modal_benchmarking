@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Eye, ArrowUpDown, XCircle, FileCode, FileImage } from 'lucide-react';
 import { ModelBenchmarkResult } from '../../types/benchmark';
-import { formatINR } from '../../services/pricingMatrix';
+import { formatINR, formatLatency } from '../../services/pricingMatrix';
 
 interface ModelComparisonTableProps {
   results: ModelBenchmarkResult[];
@@ -168,7 +168,7 @@ export const ModelComparisonTable: React.FC<ModelComparisonTableProps> = ({
 
                   {/* Latency */}
                   <td className="py-3 px-4 font-bold text-amber-300">
-                    {isSuccess ? `${r.latencyMs} ms` : '-'}
+                    {isSuccess ? formatLatency(r.latencyMs) : '-'}
                   </td>
 
                   {/* Cost in Indian Rupees */}

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { X, Code2, FileText, CheckCircle2 } from 'lucide-react';
 import { ModelBenchmarkResult } from '../../types/benchmark';
 import { JsonDiffViewer } from '../JsonDiffViewer';
-import { formatINR } from '../../services/pricingMatrix';
+import { formatINR, formatLatency } from '../../services/pricingMatrix';
 
 interface DetailedOutputModalProps {
   result: ModelBenchmarkResult | null;
@@ -34,7 +34,7 @@ export const DetailedOutputModal: React.FC<DetailedOutputModalProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1 font-mono">
-              Latency: <strong className="text-amber-400">{result.latencyMs}ms</strong> · Cost: <strong className="text-emerald-400">{formatINR(costInr)}</strong> (${result.estimatedCost.toFixed(6)}) · Accuracy: <strong className="text-cyan-300">{result.accuracy.overallAccuracy}%</strong>
+              Latency: <strong className="text-amber-400">{formatLatency(result.latencyMs)}</strong> · Cost: <strong className="text-emerald-400">{formatINR(costInr)}</strong> (${result.estimatedCost.toFixed(6)}) · Accuracy: <strong className="text-cyan-300">{result.accuracy.overallAccuracy}%</strong>
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5">
               Input Tokens: <strong className="text-white">{result.inputTokens}</strong> | Output Tokens: <strong className="text-white">{result.outputTokens}</strong> | Total Tokens: <strong className="text-cyan-400">{result.totalTokens}</strong>

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Sparkles, Compass, Zap, IndianRupee, Target, CheckCircle2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ModelBenchmarkResult, PriorityOption } from '../../types/benchmark';
-import { formatINR } from '../../services/pricingMatrix';
+import { formatINR, formatLatency } from '../../services/pricingMatrix';
 
 interface RecommendationWizardProps {
   results: ModelBenchmarkResult[];
@@ -22,7 +22,7 @@ export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({ resu
 
   if (priority === 'SPEED') {
     winner = [...validResults].sort((a, b) => a.latencyMs - b.latencyMs)[0];
-    justification = `Chosen for fastest turnaround time (${winner.latencyMs}ms), ideal for real-time interactive ATS resume parsing.`;
+    justification = `Chosen for fastest turnaround time (${formatLatency(winner.latencyMs)}), ideal for real-time interactive ATS resume parsing.`;
   } else if (priority === 'COST') {
     winner = [...validResults].sort(
       (a, b) => (a.estimatedCostInr || a.estimatedCost * 86.5) - (b.estimatedCostInr || b.estimatedCost * 86.5)
@@ -44,7 +44,7 @@ export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({ resu
 
     winner = ranked[0];
     const costInrStr = formatINR(winner.estimatedCostInr || winner.estimatedCost * 86.5);
-    justification = `Optimal balance of high accuracy (${winner.accuracy.overallAccuracy}%), low latency (${winner.latencyMs}ms), and low cost (${costInrStr}).`;
+    justification = `Optimal balance of high accuracy (${winner.accuracy.overallAccuracy}%), low latency (${formatLatency(winner.latencyMs)}), and low cost (${costInrStr}).`;
   }
 
   const triggerConfetti = () => {

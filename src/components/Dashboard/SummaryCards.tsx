@@ -3,7 +3,7 @@
 import React from 'react';
 import { Zap, IndianRupee, Target, Award } from 'lucide-react';
 import { ModelBenchmarkResult } from '../../types/benchmark';
-import { formatINR } from '../../services/pricingMatrix';
+import { formatINR, formatLatency } from '../../services/pricingMatrix';
 
 interface SummaryCardsProps {
   results: ModelBenchmarkResult[];
@@ -77,7 +77,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ results }) => {
         </div>
         <div className="mt-3 flex items-center justify-between border-t border-amber-500/20 pt-2 text-xs">
           <span className="text-slate-400">Latency:</span>
-          <span className="font-mono font-bold text-amber-400">{fastest.latencyMs} ms</span>
+          <span className="font-mono font-bold text-amber-400">{formatLatency(fastest.latencyMs)}</span>
         </div>
       </div>
 
