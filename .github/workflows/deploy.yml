@@ -1,0 +1,26 @@
+name: Auto Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 104.211.89.217
+          username: Gyanu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /home/Gyanu/next-app
+            git pull origin main
+            npm install
+            npm run build
+            pm2 restart next-app || pm2 start npm --name "next-app" -- start
+            pm2 save
