@@ -26,7 +26,7 @@ interface ResumeInputPanelProps {
     expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     selectedModelIds: string[],
     systemPrompt: string,
-    globalExtractionMode: 'TEXT' | 'MULTIMODAL'
+    globalExtractionMode: 'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY'
   ) => void;
   isRunning: boolean;
 }
@@ -284,7 +284,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
 
   // Selected models list (empty by default)
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
-  const [globalExtractionMode, setGlobalExtractionMode] = useState<'TEXT' | 'MULTIMODAL'>('TEXT');
+  const [globalExtractionMode, setGlobalExtractionMode] = useState<'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY'>('AUTO');
 
 
   // Track active resume state changes during render to avoid useEffect state updates
@@ -305,12 +305,12 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
     }
   }
 
-  // Direct PDF or ZIP file drop/select handler
+  // Direct PDF, ZIP, Image or Doc file drop/select handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setFileProcessingMsg('Analyzing PDF content & extracting text...');
+    setFileProcessingMsg('Analyzing file content & extracting text...');
     try {
       const file = files[0];
       const lowerName = file.name.toLowerCase();
@@ -318,11 +318,11 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
       if (lowerName.endsWith('.zip')) {
         const extractedItems = await processZipArchive(file);
         if (extractedItems.length === 0) {
-          setFileProcessingMsg('No PDF or TXT files found inside ZIP archive.');
+          setFileProcessingMsg('No supported files found inside ZIP archive.');
         } else {
           setLoadedResumes(extractedItems);
           setActiveResumeIndex(0);
-          setFileProcessingMsg(`Loaded ${extractedItems.length} PDF resumes!`);
+          setFileProcessingMsg(`Loaded ${extractedItems.length} resumes from ZIP archive!`);
         }
       } else {
         const newItems: ResumeFileItem[] = [];
@@ -332,7 +332,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         }
         setLoadedResumes(newItems);
         setActiveResumeIndex(0);
-        setFileProcessingMsg(`Loaded ${newItems.length} PDF resume file(s).`);
+        setFileProcessingMsg(`Loaded ${newItems.length} file(s).`);
       }
     } catch (err) {
       console.error('File upload error:', err);
@@ -432,13 +432,13 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider pl-2 shrink-0">
               Extraction:
             </span>
-            <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800/80">
+            <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800/80 gap-0.5">
               <button
                 type="button"
-                onClick={() => setGlobalExtractionMode('TEXT')}
-                className={`rounded-md px-3 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
-                  globalExtractionMode === 'TEXT'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25'
+                onClick={() => setGlobalExtractionMode('TEXT_ONLY')}
+                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                  globalExtractionMode === 'TEXT_ONLY'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -446,14 +446,25 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setGlobalExtractionMode('MULTIMODAL')}
-                className={`rounded-md px-3 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
-                  globalExtractionMode === 'MULTIMODAL'
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25'
+                onClick={() => setGlobalExtractionMode('AUTO')}
+                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                  globalExtractionMode === 'AUTO'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25 font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Multimodal (PDF)
+                Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => setGlobalExtractionMode('FILE_ONLY')}
+                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                  globalExtractionMode === 'FILE_ONLY'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Only File Upload
               </button>
             </div>
           </div>
@@ -462,7 +473,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
             type="file"
             ref={fileInputRef}
             onChange={handleFileUpload}
-            accept=".pdf,.zip,.txt,.json"
+            accept=".pdf,.zip,.txt,.json,.docx,.doc,.png,.jpg,.jpeg,.webp"
             multiple
             className="hidden"
           />
@@ -472,7 +483,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
             className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:opacity-90 px-6 py-2.5 text-xs font-extrabold text-white shadow-xl shadow-cyan-600/20 transition-all active:scale-95 cursor-pointer shrink-0"
           >
             <Upload className="h-4 w-4" />
-            <span>Upload PDF / ZIP (Up to 100 Resumes)</span>
+            <span>Upload Files / ZIP</span>
           </button>
         </div>
       </div>
@@ -497,19 +508,26 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-            {loadedResumes.map((resItem, idx) => (
-              <button
-                key={resItem.id}
-                onClick={() => setActiveResumeIndex(idx)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all flex items-center space-x-1 ${activeResumeIndex === idx
-                    ? 'bg-indigo-500 text-white font-bold shadow-md shadow-indigo-500/30'
-                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
-                  }`}
-              >
-                <FileText className="h-3 w-3" />
-                <span>{resItem.fileName}</span>
-              </button>
-            ))}
+            {loadedResumes.map((resItem, idx) => {
+              const getFileIcon = (type: string) => {
+                if (type === 'image') return <FileImage className="h-3 w-3" />;
+                if (type === 'docx' || type === 'doc') return <FileCode className="h-3 w-3 text-cyan-400" />;
+                return <FileText className="h-3 w-3" />;
+              };
+              return (
+                <button
+                  key={resItem.id}
+                  onClick={() => setActiveResumeIndex(idx)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all flex items-center space-x-1 ${activeResumeIndex === idx
+                      ? 'bg-indigo-500 text-white font-bold shadow-md shadow-indigo-500/30'
+                      : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
+                    }`}
+                >
+                  {getFileIcon(resItem.fileType)}
+                  <span>{resItem.fileName}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

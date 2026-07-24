@@ -41,7 +41,7 @@ export default function Home() {
     expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     selectedModelIds: string[],
     systemPrompt: string,
-    globalExtractionMode: 'TEXT' | 'MULTIMODAL'
+    globalExtractionMode: 'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY'
   ) => {
     setIsRunning(true);
     setAllBatchResults([]);

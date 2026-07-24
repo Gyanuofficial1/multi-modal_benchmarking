@@ -84,12 +84,13 @@ export interface ModelBenchmarkResult {
 export interface ResumeFileItem {
   id: string;
   fileName: string;
-  fileType: 'pdf' | 'zip' | 'txt';
+  fileType: 'pdf' | 'zip' | 'txt' | 'image' | 'docx' | 'doc';
   extractedText: string;
   base64Data?: string;
   isScannedImagePdf?: boolean;
   extractionMode: 'TEXT_PROMPT' | 'DIRECT_FILE_MULTIMODAL';
   expectedJson?: Record<string, any>;
+  mimeType?: string;
 }
 
 export interface SampleResumeItem {

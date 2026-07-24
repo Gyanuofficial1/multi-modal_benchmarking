@@ -8,7 +8,7 @@ export async function benchmarkSingleModel(
   expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   config: ProviderApiConfig,
   systemPrompt?: string,
-  globalExtractionMode?: 'TEXT' | 'MULTIMODAL'
+  globalExtractionMode?: 'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY'
 ): Promise<ModelBenchmarkResult> {
   try {
     const res = await fetch('/api/benchmark', {

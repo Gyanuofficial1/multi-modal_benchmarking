@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       resumeItem: ResumeFileItem;
       expectedJson: Record<string, any>;
       systemPrompt?: string;
-      globalExtractionMode?: 'TEXT' | 'MULTIMODAL';
+      globalExtractionMode?: 'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY';
     } = body;
 
     const sysPrompt = (systemPrompt || '').trim();
@@ -55,6 +55,23 @@ export async function POST(req: NextRequest) {
     let inputTokens = 0;
     let outputTokens = 0;
     let actualExtractionMode = resumeItem.extractionMode;
+
+    const fileMimeType = resumeItem.mimeType || 'application/pdf';
+
+    // Resolve useRawFile based on the extraction mode
+    let useRawFile = false;
+    if (globalExtractionMode === 'TEXT_ONLY') {
+      useRawFile = false;
+    } else if (globalExtractionMode === 'FILE_ONLY') {
+      useRawFile = true;
+    } else {
+      // AUTO mode
+      useRawFile = shouldUseRawFile(
+        process.env.GEMINI_TEXT_EXTRACTION || process.env.GOOGLE_TEXT_EXTRACTION || process.env.VERTEX_TEXT_EXTRACTION || process.env.ANTHROPIC_TEXT_EXTRACTION || process.env.BEDROCK_TEXT_EXTRACTION,
+        resumeItem.extractionMode,
+        resumeItem.extractedText
+      );
+    }
 
     // Helper to format text prompt with system instructions
     const buildUserText = (resumeText: string) => {
@@ -78,18 +95,16 @@ export async function POST(req: NextRequest) {
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${apiKey}`;
 
-      const useRawFile = globalExtractionMode
-        ? globalExtractionMode === 'MULTIMODAL'
-        : shouldUseRawFile(process.env.GEMINI_TEXT_EXTRACTION || process.env.GOOGLE_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
+
 
       let parts: any[] = [];
       if (useRawFile && resumeItem.base64Data) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
         parts = [
-          { text: sysPrompt ? `${sysPrompt}\n\nParse the attached PDF resume document into JSON:` : 'Parse the attached PDF resume document into JSON:' },
+          { text: sysPrompt ? `${sysPrompt}\n\nParse the attached resume document into JSON:` : 'Parse the attached resume document into JSON:' },
           {
             inlineData: {
-              mimeType: 'application/pdf',
+              mimeType: fileMimeType,
               data: resumeItem.base64Data,
             },
           },
@@ -138,18 +153,16 @@ export async function POST(req: NextRequest) {
 
       const vertexModelId = model.id.replace(/^vertex-/, '');
 
-      const useRawFile = globalExtractionMode
-        ? globalExtractionMode === 'MULTIMODAL'
-        : shouldUseRawFile(process.env.VERTEX_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
+
 
       let parts: any[] = [];
       if (useRawFile && resumeItem.base64Data) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
         parts = [
-          { text: sysPrompt ? `${sysPrompt}\n\nParse the attached PDF resume document into JSON:` : 'Parse the attached PDF resume document into JSON:' },
+          { text: sysPrompt ? `${sysPrompt}\n\nParse the attached resume document into JSON:` : 'Parse the attached resume document into JSON:' },
           {
             inlineData: {
-              mimeType: 'application/pdf',
+              mimeType: fileMimeType,
               data: resumeItem.base64Data,
             },
           },
@@ -230,13 +243,32 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      actualExtractionMode = 'TEXT_PROMPT';
-
       const messages: any[] = [];
       if (sysPrompt) {
         messages.push({ role: 'system', content: sysPrompt });
       }
-      messages.push({ role: 'user', content: resumeItem.extractedText });
+
+      if (useRawFile && resumeItem.base64Data && fileMimeType.startsWith('image/')) {
+        actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
+        messages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: sysPrompt ? `${sysPrompt}\n\nParse the attached image into JSON:` : 'Parse the attached image into JSON:',
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${fileMimeType};base64,${resumeItem.base64Data}`,
+              },
+            },
+          ],
+        });
+      } else {
+        actualExtractionMode = 'TEXT_PROMPT';
+        messages.push({ role: 'user', content: resumeItem.extractedText });
+      }
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -276,9 +308,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const useRawFile = globalExtractionMode
-        ? globalExtractionMode === 'MULTIMODAL'
-        : shouldUseRawFile(process.env.ANTHROPIC_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
+      const canUseRawFileForAnthropic = fileMimeType === 'application/pdf' || fileMimeType.startsWith('image/');
 
       const reqBody: any = {
         model: model.id,
@@ -288,23 +318,35 @@ export async function POST(req: NextRequest) {
         reqBody.system = sysPrompt;
       }
 
-      if (useRawFile && resumeItem.base64Data) {
+      if (useRawFile && resumeItem.base64Data && canUseRawFileForAnthropic) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
+        const isImage = fileMimeType.startsWith('image/');
+        const mediaPart = isImage
+          ? {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: fileMimeType,
+                data: resumeItem.base64Data,
+              },
+            }
+          : {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: resumeItem.base64Data,
+              },
+            };
+
         reqBody.messages = [
           {
             role: 'user',
             content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: resumeItem.base64Data,
-                },
-              },
+              mediaPart,
               {
                 type: 'text',
-                text: 'Analyze the attached resume document.',
+                text: 'Analyze the attached document.',
               },
             ],
           },
@@ -469,10 +511,6 @@ export async function POST(req: NextRequest) {
         cleanedToken = decodeURIComponent(cleanedToken);
       }
 
-      const useRawFile = globalExtractionMode
-        ? globalExtractionMode === 'MULTIMODAL'
-        : shouldUseRawFile(process.env.BEDROCK_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
-
       // Map model.id to AWS Bedrock model IDs
       const bedrockModelIds: Record<string, string> = {
         'bedrock-deepseek-v3-1': 'deepseek.v3.2',
@@ -505,20 +543,34 @@ export async function POST(req: NextRequest) {
           payload.system = sysPrompt;
         }
 
-        if (useRawFile && resumeItem.base64Data) {
+        const canUseRawFileForBedrock = fileMimeType === 'application/pdf' || fileMimeType.startsWith('image/');
+
+        if (useRawFile && resumeItem.base64Data && canUseRawFileForBedrock) {
           actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
+          const isImage = fileMimeType.startsWith('image/');
+          const mediaPart = isImage
+            ? {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: fileMimeType,
+                  data: resumeItem.base64Data,
+                },
+              }
+            : {
+                type: 'document',
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: resumeItem.base64Data,
+                },
+              };
+
           payload.messages = [
             {
               role: 'user',
               content: [
-                {
-                  type: 'document',
-                  source: {
-                    type: 'base64',
-                    media_type: 'application/pdf',
-                    data: resumeItem.base64Data,
-                  },
-                },
+                mediaPart,
                 {
                   type: 'text',
                   text: 'Analyze the attached resume document.',
