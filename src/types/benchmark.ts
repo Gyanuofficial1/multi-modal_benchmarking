@@ -91,6 +91,7 @@ export interface ResumeFileItem {
   extractionMode: 'TEXT_PROMPT' | 'DIRECT_FILE_MULTIMODAL';
   expectedJson?: Record<string, any>;
   mimeType?: string;
+  s3Key?: string;
 }
 
 export interface SampleResumeItem {

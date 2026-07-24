@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Play,
   FileText,
@@ -285,6 +285,39 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
   // Selected models list (empty by default)
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [globalExtractionMode, setGlobalExtractionMode] = useState<'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY'>('AUTO');
+  const [isS3Enabled, setIsS3Enabled] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkS3Status = async () => {
+      try {
+        const res = await fetch('/api/upload');
+        if (res.ok) {
+          const data = await res.json();
+          setIsS3Enabled(data.enabled);
+        }
+      } catch (err) {
+        console.warn('Failed to check S3 status:', err);
+      }
+    };
+    checkS3Status();
+  }, []);
+
+  const uploadToS3 = async (fileName: string, base64Data: string, mimeType?: string): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName, base64Data, mimeType }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.s3Key || null;
+      }
+    } catch (err) {
+      console.error('Failed to upload file to S3:', err);
+    }
+    return null;
+  };
 
 
   // Track active resume state changes during render to avoid useEffect state updates
@@ -315,24 +348,46 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
       const file = files[0];
       const lowerName = file.name.toLowerCase();
 
+      let processedItems: ResumeFileItem[] = [];
       if (lowerName.endsWith('.zip')) {
-        const extractedItems = await processZipArchive(file);
-        if (extractedItems.length === 0) {
-          setFileProcessingMsg('No supported files found inside ZIP archive.');
-        } else {
-          setLoadedResumes(extractedItems);
-          setActiveResumeIndex(0);
-          setFileProcessingMsg(`Loaded ${extractedItems.length} resumes from ZIP archive!`);
-        }
+        processedItems = await processZipArchive(file);
       } else {
-        const newItems: ResumeFileItem[] = [];
         for (let i = 0; i < files.length; i++) {
           const item = await processSingleFile(files[i]);
-          newItems.push(item);
+          processedItems.push(item);
         }
-        setLoadedResumes(newItems);
+      }
+
+      if (processedItems.length === 0) {
+        setFileProcessingMsg('No supported files found.');
+        return;
+      }
+
+      if (isS3Enabled) {
+        setFileProcessingMsg('Uploading files to AWS S3...');
+        const s3UploadedItems: ResumeFileItem[] = [];
+        for (const item of processedItems) {
+          if (item.base64Data) {
+            const s3Key = await uploadToS3(item.fileName, item.base64Data, item.mimeType);
+            if (s3Key) {
+              s3UploadedItems.push({
+                ...item,
+                s3Key,
+              });
+            } else {
+              s3UploadedItems.push(item);
+            }
+          } else {
+            s3UploadedItems.push(item);
+          }
+        }
+        setLoadedResumes(s3UploadedItems);
         setActiveResumeIndex(0);
-        setFileProcessingMsg(`Loaded ${newItems.length} file(s).`);
+        setFileProcessingMsg(`Loaded & uploaded ${s3UploadedItems.length} file(s) to S3!`);
+      } else {
+        setLoadedResumes(processedItems);
+        setActiveResumeIndex(0);
+        setFileProcessingMsg(`Loaded ${processedItems.length} file(s) locally.`);
       }
     } catch (err) {
       console.error('File upload error:', err);
@@ -387,7 +442,17 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
     if (jsonSyntaxError || loadedResumes.length === 0) return;
     try {
       const parsedExpected = expectedJsonStr.trim() ? JSON.parse(expectedJsonStr) : {};
-      onRunBatchBenchmark(loadedResumes, parsedExpected, selectedModelIds, systemPrompt, globalExtractionMode);
+
+      // Clean up base64Data from items if s3Key exists to keep request body extremely small!
+      const cleanedResumes = loadedResumes.map(item => {
+        if (item.s3Key) {
+          const { base64Data, ...rest } = item;
+          return rest;
+        }
+        return item;
+      });
+
+      onRunBatchBenchmark(cleanedResumes, parsedExpected, selectedModelIds, systemPrompt, globalExtractionMode);
     } catch {
       setJsonSyntaxError('Please resolve JSON syntax errors before running benchmark.');
     }
@@ -411,14 +476,19 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
       {/* 1. Header & File Upload Controls */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-4">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
             <h2 className="text-base font-bold text-white flex items-center space-x-2">
               <FileText className="h-5 w-5 text-cyan-400" />
               <span>1. Upload PDF / ZIP Resumes & Ground Truth</span>
             </h2>
-            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-300 border border-emerald-500/30">
+            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/30">
               Live API Mode
             </span>
+            {isS3Enabled && (
+              <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 border border-cyan-500/30">
+                AWS S3 Storage Active
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             Upload PDF files or a <strong>ZIP archive containing up to 100 resumes</strong>.
@@ -525,6 +595,9 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
                 >
                   {getFileIcon(resItem.fileType)}
                   <span>{resItem.fileName}</span>
+                  {resItem.s3Key && (
+                    <span className="ml-1 text-[8px] bg-cyan-500/20 text-cyan-300 px-1 rounded border border-cyan-500/30 font-extrabold uppercase">S3</span>
+                  )}
                 </button>
               );
             })}

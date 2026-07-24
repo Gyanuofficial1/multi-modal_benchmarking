@@ -3,6 +3,7 @@ import { AIModel, ModelBenchmarkResult, ResumeFileItem } from '../../../types/be
 import { evaluateJsonAccuracy } from '../../../services/jsonEvaluator';
 import { calculateEstimatedCost } from '../../../services/pricingMatrix';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
 function getVertexLocationForModel(modelId: string): string {
   const envMap: Record<string, string | undefined> = {
@@ -73,6 +74,33 @@ export async function POST(req: NextRequest) {
     let actualExtractionMode = resumeItem.extractionMode;
 
     const fileMimeType = resumeItem.mimeType || 'application/pdf';
+
+    // Download file content from S3 if s3Key is provided but base64Data is missing
+    if (resumeItem.s3Key && !resumeItem.base64Data) {
+      const bucketName = process.env.AWS_S3_BUCKET_NAME;
+      if (bucketName) {
+        try {
+          const s3Client = new S3Client({
+            region: process.env.AWS_REGION || 'us-east-1',
+            credentials: {
+              accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+            },
+          });
+          const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: resumeItem.s3Key,
+          });
+          const s3Response = await s3Client.send(command);
+          if (s3Response.Body) {
+            const bytes = await s3Response.Body.transformToByteArray();
+            resumeItem.base64Data = Buffer.from(bytes).toString('base64');
+          }
+        } catch (err) {
+          console.error(`Error downloading file from S3:`, err);
+        }
+      }
+    }
 
     // Resolve useRawFile based on the extraction mode
     let useRawFile = false;
