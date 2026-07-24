@@ -31,6 +31,22 @@ function shouldUseRawFile(
   return extractionMode === 'DIRECT_FILE_MULTIMODAL' || textLen < 100;
 }
 
+function providerSupportsMimeType(provider: string, mimeType: string): boolean {
+  const mime = mimeType.toLowerCase();
+  const isImage = mime.startsWith('image/');
+
+  if (provider === 'google' || provider === 'vertex') {
+    return mime === 'application/pdf' || isImage;
+  }
+  if (provider === 'anthropic' || provider === 'bedrock') {
+    return mime === 'application/pdf' || isImage;
+  }
+  if (provider === 'openai' || provider === 'azure') {
+    return isImage;
+  }
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -65,9 +81,24 @@ export async function POST(req: NextRequest) {
     } else if (globalExtractionMode === 'FILE_ONLY') {
       useRawFile = true;
     } else {
-      // AUTO mode
+      // AUTO mode: resolve provider-specific environment variables for text extraction preference
+      let providerEnvVal: string | undefined = undefined;
+      if (model.provider === 'google') {
+        providerEnvVal = process.env.GEMINI_TEXT_EXTRACTION || process.env.GOOGLE_TEXT_EXTRACTION;
+      } else if (model.provider === 'vertex') {
+        providerEnvVal = process.env.VERTEX_TEXT_EXTRACTION;
+      } else if (model.provider === 'openai') {
+        providerEnvVal = process.env.OPENAI_TEXT_EXTRACTION;
+      } else if (model.provider === 'anthropic') {
+        providerEnvVal = process.env.ANTHROPIC_TEXT_EXTRACTION;
+      } else if (model.provider === 'azure') {
+        providerEnvVal = process.env.AZURE_TEXT_EXTRACTION;
+      } else if (model.provider === 'bedrock') {
+        providerEnvVal = process.env.BEDROCK_TEXT_EXTRACTION;
+      }
+
       useRawFile = shouldUseRawFile(
-        process.env.GEMINI_TEXT_EXTRACTION || process.env.GOOGLE_TEXT_EXTRACTION || process.env.VERTEX_TEXT_EXTRACTION || process.env.ANTHROPIC_TEXT_EXTRACTION || process.env.BEDROCK_TEXT_EXTRACTION,
+        providerEnvVal,
         resumeItem.extractionMode,
         resumeItem.extractedText
       );
@@ -97,8 +128,10 @@ export async function POST(req: NextRequest) {
 
 
 
+      const canUseRawFile = useRawFile && resumeItem.base64Data && providerSupportsMimeType('google', fileMimeType);
+
       let parts: any[] = [];
-      if (useRawFile && resumeItem.base64Data) {
+      if (canUseRawFile && resumeItem.base64Data) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
         parts = [
           { text: sysPrompt ? `${sysPrompt}\n\nParse the attached resume document into JSON:` : 'Parse the attached resume document into JSON:' },
@@ -155,8 +188,10 @@ export async function POST(req: NextRequest) {
 
 
 
+      const canUseRawFile = useRawFile && resumeItem.base64Data && providerSupportsMimeType('vertex', fileMimeType);
+
       let parts: any[] = [];
-      if (useRawFile && resumeItem.base64Data) {
+      if (canUseRawFile && resumeItem.base64Data) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
         parts = [
           { text: sysPrompt ? `${sysPrompt}\n\nParse the attached resume document into JSON:` : 'Parse the attached resume document into JSON:' },
@@ -243,12 +278,14 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const canUseRawFile = useRawFile && resumeItem.base64Data && providerSupportsMimeType('openai', fileMimeType);
+
       const messages: any[] = [];
       if (sysPrompt) {
         messages.push({ role: 'system', content: sysPrompt });
       }
 
-      if (useRawFile && resumeItem.base64Data && fileMimeType.startsWith('image/')) {
+      if (canUseRawFile && resumeItem.base64Data) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
         messages.push({
           role: 'user',
@@ -308,7 +345,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const canUseRawFileForAnthropic = fileMimeType === 'application/pdf' || fileMimeType.startsWith('image/');
+      const canUseRawFile = useRawFile && resumeItem.base64Data && providerSupportsMimeType('anthropic', fileMimeType);
 
       const reqBody: any = {
         model: model.id,
@@ -318,7 +355,7 @@ export async function POST(req: NextRequest) {
         reqBody.system = sysPrompt;
       }
 
-      if (useRawFile && resumeItem.base64Data && canUseRawFileForAnthropic) {
+      if (canUseRawFile && resumeItem.base64Data) {
         actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
         const isImage = fileMimeType.startsWith('image/');
         const mediaPart = isImage
@@ -426,13 +463,34 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      actualExtractionMode = 'TEXT_PROMPT';
+      const canUseRawFile = useRawFile && resumeItem.base64Data && providerSupportsMimeType('azure', fileMimeType);
 
       const messages: any[] = [];
       if (sysPrompt) {
         messages.push({ role: 'system', content: sysPrompt });
       }
-      messages.push({ role: 'user', content: resumeItem.extractedText });
+
+      if (canUseRawFile && resumeItem.base64Data) {
+        actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
+        messages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: sysPrompt ? `${sysPrompt}\n\nParse the attached image into JSON:` : 'Parse the attached image into JSON:',
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${fileMimeType};base64,${resumeItem.base64Data}`,
+              },
+            },
+          ],
+        });
+      } else {
+        actualExtractionMode = 'TEXT_PROMPT';
+        messages.push({ role: 'user', content: resumeItem.extractedText });
+      }
 
       let url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
 
@@ -543,9 +601,9 @@ export async function POST(req: NextRequest) {
           payload.system = sysPrompt;
         }
 
-        const canUseRawFileForBedrock = fileMimeType === 'application/pdf' || fileMimeType.startsWith('image/');
+        const canUseRawFileForBedrock = useRawFile && resumeItem.base64Data && providerSupportsMimeType('bedrock', fileMimeType);
 
-        if (useRawFile && resumeItem.base64Data && canUseRawFileForBedrock) {
+        if (canUseRawFileForBedrock && resumeItem.base64Data) {
           actualExtractionMode = 'DIRECT_FILE_MULTIMODAL';
           const isImage = fileMimeType.startsWith('image/');
           const mediaPart = isImage
