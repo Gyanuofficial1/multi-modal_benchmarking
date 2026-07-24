@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Play,
   FileText,
@@ -16,14 +16,14 @@ import {
   FileCode,
   FileImage,
 } from 'lucide-react';
-import { AIModel, ResumeFileItem } from '../types/benchmark';
+import { ResumeFileItem } from '../types/benchmark';
 import { SUPPORTED_MODELS, formatInrPer1M } from '../services/pricingMatrix';
 import { processSingleFile, processZipArchive } from '../services/zipPdfHandler';
 
 interface ResumeInputPanelProps {
   onRunBatchBenchmark: (
     resumes: ResumeFileItem[],
-    expectedJson: Record<string, any>,
+    expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     selectedModelIds: string[],
     systemPrompt: string
   ) => void;
@@ -47,172 +47,187 @@ const PRESET_OPTIONS = [
 const PRESET_PROMPTS: Record<string, string> = {
   'initial-parsing': `You are a resume parsing AI.
 
-Extract the following fields and return ONLY valid JSON:
-- name
-- email
-- phone
-- country_code
-- gender
-- work_stage
-- location
-- is_actual_resume
-- is_doubtful_experience
-- doubtful_experience_reason
+    Extract the following fields and return ONLY valid JSON:
+    - name
+    - email
+    - phone
+    - country_code
+    - gender
+    - work_stage
+    - location
+    - is_actual_resume
+    - is_doubtful_experience
+    - doubtful_experience_confidence
+    - doubtful_experience_reason
 
-STRICT RULES:
+    STRICT RULES:
 
-NAME:
-- Return only first name and surname
-- If the name is in ALL CAPITAL letters, convert it to Proper Case
-- Example: "PARTH PATEL" → "Parth Patel"
-- Do not include middle names or titles
+    NAME:
+    - Return only first name and surname
+    - If the name is in ALL CAPITAL letters, convert it to Proper Case
+    - Example: "PARTH PATEL" → "Parth Patel"
+    - Do not include middle names or titles
 
-EMAIL:
-- Return ONLY a valid email address
-- If the email is invalid or missing, return null
+    EMAIL:
+    - Return ONLY a valid email address
+    - If the email is invalid or missing, return null
 
-PHONE:
-- Return ONLY digits
-- Return ONLY ONE mobile number
-- NEVER remove leading digits from a phone number if the original normalized number itself is already a valid mobile-length number for the detected country
-- Remove country code from PHONE ONLY when the international prefix is explicitly present and confidently separable
-- If multiple numbers exist, return the latest/current/mobile number only
-- Ignore landline, fax, office, home, residence, alternate, and WhatsApp numbers unless explicitly marked as mobile
-- Prefer numbers labeled Mobile, Mob, Cell, or M
-- Normalize by removing spaces, dashes, brackets, extensions, and "+"
-- Validate ONLY normalized digits; ignore formatting style, separators, brackets, spacing, or country-specific display patterns
-- NEVER infer country code from formatting style or leading digits alone
-- Extract country code ONLY when explicitly present with "+" , "00" prefix, or a clearly separable international format
-- Remove country code from PHONE after extraction
-- Never keep country code inside PHONE
-- If no explicit country code exists, treat the full normalized number as the local/national mobile number
-- If local/mobile format matches resume location country, accept it and use that country's calling code
-- Validate mainly by mobile-like structure and valid national number length
-- Do NOT over-reject numbers based on telecom prefixes or uncertain numbering rules
-- Never return partial, broken, truncated, or incomplete numbers
-- If no valid mobile number exists, return null
+    PHONE:
+    - Return ONLY digits
+    - Return ONLY ONE mobile number
+    - NEVER remove leading digits from a phone number if the original normalized number itself is already a valid mobile-length number for the detected country
+    - Remove country code from PHONE ONLY when the international prefix is explicitly present and confidently separable
+    - If multiple numbers exist, return the latest/current/mobile number only
+    - Ignore landline, fax, office, home, residence, alternate, and WhatsApp numbers unless explicitly marked as mobile
+    - Prefer numbers labeled Mobile, Mob, Cell, or M
+    - Normalize by removing spaces, dashes, brackets, extensions, and "+"
+    - Validate ONLY normalized digits; ignore formatting style, separators, brackets, spacing, or country-specific display patterns
+    - NEVER infer country code from formatting style or leading digits alone
+    - Extract country code ONLY when explicitly present with "+" , "00" prefix, or a clearly separable international format
+    - Remove country code from PHONE after extraction
+    - Never keep country code inside PHONE
+    - If no explicit country code exists, treat the full normalized number as the local/national mobile number
+    - If local/mobile format matches resume location country, accept it and use that country's calling code
+    - Validate mainly by mobile-like structure and valid national number length
+    - Do NOT over-reject numbers based on telecom prefixes or uncertain numbering rules
+    - Never return partial, broken, truncated, or incomplete numbers
+    - If no valid mobile number exists, return null
 
-COUNTRY_CODE:
-- Return ONLY numeric country calling code without "+"
-- COUNTRY_CODE and PHONE must always belong to the same country
-- Prefer order:
-    1. Explicit country code from phone
-    2. Resume location/address country
-    3. Last working country
-- If phone is valid for resume location country and no explicit country code exists, use resume country's calling code
-- Never infer country code from formatting style or leading digits alone
-- Return null only if country cannot be determined
-- Never guess or assume
+    COUNTRY_CODE:
+    - Return ONLY numeric country calling code without "+"
+    - COUNTRY_CODE and PHONE must always belong to the same country
+    - Prefer order:
+        1. Explicit country code from phone
+        2. Resume location/address country
+        3. Last working country
+    - If phone is valid for resume location country and no explicit country code exists, use resume country's calling code
+    - Never infer country code from formatting style or leading digits alone
+    - Return null only if country cannot be determined
+    - Never guess or assume
 
-GENDER:
-- Allowed values ONLY:
-- "male"
-- "female"
-- "other"
-- Detect from:
-- Explicit gender mention
-- Pronouns (he/him → male, she/her → female)
-- If gender cannot be confidently determined, return null
-- Never guess based on name alone
+    GENDER:
+    - Allowed values ONLY:
+    - "male"
+    - "female"
+    - "other"
+    - Detect from:
+    - Explicit gender mention
+    - Pronouns (he/him → male, she/her → female)
+    - If gender cannot be confidently determined, return null
+    - Never guess based on name alone
 
-WORK_STAGE:
-- Allowed values ONLY:
-- "intern"
-- "fresher"
-- "experience"
-- You MUST carefully read the COMPLETE experience/employment section before deciding work_stage
-- Do NOT classify as "intern" or "fresher" only because internship, trainee, apprenticeship, academic project/training, or current education is mentioned
-- Many resumes contain BOTH internship/training experience AND real employment experience
-- Your task is to decide whether the candidate has ANY valid professional work experience
-- PRIORITY RULE: Real professional experience ALWAYS overrides internship
-- If even ONE valid professional employment experience is found anywhere in the resume, work_stage MUST be "experience"
+    WORK_STAGE:
+    - Allowed values ONLY:
+    - "intern"
+    - "fresher"
+    - "experience"
+    - You MUST carefully read the COMPLETE experience/employment section before deciding work_stage
+    - Do NOT classify as "intern" or "fresher" only because internship, trainee, apprenticeship, academic project/training, or current education is mentioned
+    - Many resumes contain BOTH internship/training experience AND real employment experience
+    - Your task is to decide whether the candidate has ANY valid professional work experience
+    - PRIORITY RULE: Real professional experience ALWAYS overrides internship
+    - If even ONE valid professional employment experience is found anywhere in the resume, work_stage MUST be "experience"
 
-- "experience":
-    - Use if ANY of the following exists anywhere in the resume:
-        - at least one real company/employer with job responsibilities, work duties, production/operations/tasks, accounting/technical/engineering/business functions, client/project handling, payroll/GST/maintenance/manufacturing/quality related work
-        - any employment duration such as 6 months, 1 year, 2 years, worked from 2022-2024, currently working, or present
-        - any non-intern professional designation such as Engineer, Operator, Accountant, Technician, Executive, Supervisor, Associate, Manager, Analyst, Developer, CNC Operator, Production Engineer, Quality Engineer, Maintenance Engineer, or Machine Operator
-        - explicit claims of work experience such as "2 years experience", "worked in", "currently employed", "hands-on experience", or "professional experience"
-        - both internship and real employment are present; in such cases IGNORE internship for final classification and PRIORITIZE full-time or professional employment
-    - Employment dates are NOT mandatory if company name and responsibilities are present
-    - A clear employer/company with either a job title or explicit responsibilities is sufficient
-    - Local businesses, agencies, shops, factories, medical stores, and manufacturing units count as valid employers
-    - If degree is completed (e.g., "High School", "Diploma", Bachelors, Masters, PhD) but graduation year is missing, do NOT block classification
+    - "experience":
+        - Use if ANY of the following exists anywhere in the resume:
+            - at least one real company/employer with job responsibilities, work duties, production/operations/tasks, accounting/technical/engineering/business functions, client/project handling, payroll/GST/maintenance/manufacturing/quality related work
+            - any employment duration such as 6 months, 1 year, 2 years, worked from 2022-2024, currently working, or present
+            - any non-intern professional designation such as Engineer, Operator, Accountant, Technician, Executive, Supervisor, Associate, Manager, Analyst, Developer, CNC Operator, Production Engineer, Quality Engineer, Maintenance Engineer, or Machine Operator
+            - explicit claims of work experience such as "2 years experience", "worked in", "currently employed", "hands-on experience", or "professional experience"
+            - both internship and real employment are present; in such cases IGNORE internship for final classification and PRIORITIZE full-time or professional employment
+        - Employment dates are NOT mandatory if company name and responsibilities are present
+        - A clear employer/company with either a job title or explicit responsibilities is sufficient
+        - Local businesses, agencies, shops, factories, medical stores, and manufacturing units count as valid employers
+        - If degree is completed (e.g., "High School", "Diploma", Bachelors, Masters, PhD) but graduation year is missing, do NOT block classification
 
-- "intern":
-    - Use ONLY if the resume contains ONLY internships, apprenticeships, or trainings
-    - AND no real employer-based professional experience exists
-    - AND no evidence of full-time job responsibilities exists
+    - "intern":
+        - Use ONLY if the resume contains ONLY internships, apprenticeships, or trainings
+        - AND no real employer-based professional experience exists
+        - AND no evidence of full-time job responsibilities exists
 
-- "fresher":
-    - Use ONLY if no internship exists
-    - AND no professional employment exists
-    - AND the resume mainly contains education, projects, certifications, skills, or college activities
-    - Academic research projects, master’s thesis work, lab work, certifications, online courses, and paper presentations do NOT count as experience
+    - "fresher":
+        - Use ONLY if no internship exists
+        - AND no professional employment exists
+        - AND the resume mainly contains education, projects, certifications, skills, or college activities
+        - Academic research projects, master’s thesis work, lab work, certifications, online courses, and paper presentations do NOT count as experience
 
-- Negative Constraints:
-    - Do NOT treat research projects, certifications, or academic work as professional experience
-    - Do NOT classify as "intern" or "fresher" if any valid professional employment exists anywhere in the resume
-    - Never assume
+    - Negative Constraints:
+        - Do NOT treat research projects, certifications, or academic work as professional experience
+        - Do NOT classify as "intern" or "fresher" if any valid professional employment exists anywhere in the resume
+        - Never assume
 
-IS_DOUBTFUL_EXPERIENCE:
-- Return ONLY 0 or 1
-- 1 = Candidate experience is in doubtful domains
-- 0 = Candidate has at least one trusted/manual/industrial domain experience
 
-DEFINITION:
-Set is_doubtful_experience = 1 IF:
-- ALL detected work experience falls under non manufacturing / non industrial domains such as: Banking / Insurance / Hospital / Teaching / Academic / Coaching / IT / Software / Medical Store / Gym / Fitness / BPO / KPO / Tourism / Hospitality / Restaurants / Food Delivery
+    IS_DOUBTFUL_EXPERIENCE:
+    - Return ONLY 0 or 1
+    - 1 = Candidate experience is in doubtful domains
+    - 0 = Candidate has at least one trusted/manual/industrial domain experience
 
-otherwise, set is_doubtful_experience = 0
+    DEFINITION:
+    Set is_doubtful_experience = 1 IF:
+    - ALL detected work experience falls under non manufacturing / non industrial domains such as: Banking / Insurance / Hospital / Teaching / Academic / Coaching / IT / Software / PMO / Project Coordination / Medical Store / Gym / Fitness / BPO / KPO / Tourism / Hospitality / Restaurants / Food Delivery
+    otherwise, set is_doubtful_experience = 0
 
-IMPORTANT RULES:
-- Dont classify as doubtful if there is ANY experience in accounting, HR, payroll, data entry, back office related work as set is_doubtful_experience = 0 even if the candidate has experience in other domains as well
-If experience domain is unclear or insufficient → return null
-- Never guess
-- Classification must be based only on explicit company, role, or responsibilities
+    IMPORTANT RULES:
+    - Dont classify as doubtful if there is ANY experience in accounting, HR, payroll, data entry, back office related work as set is_doubtful_experience = 0 even if the candidate has experience in other domains as well
+    - If experience domain is unclear or insufficient, return is_doubtful_experience = 0
+    - Never guess
+    - Classification must be based only on explicit company, role, or responsibilities
 
-DOUBTFUL_EXPERIENCE_REASON:
-- Provide a short explanation (1 line) ONLY when is_doubtful_experience = 1
-- Example:
-- "Experience only in banking and insurance sector"
-- "Worked only in IT/software roles"
-- If is_doubtful_experience = 0 or null → return null
+    FINAL DECISION RULE WHEN THERE IS NO MANUAL REVIEW:
+    - Always return is_doubtful_experience as ONLY 0 or 1. Never return null for is_doubtful_experience.
+    - If experience domain is unclear, insufficient, weak, low confidence, or conflicting, return is_doubtful_experience = 0.
+    - Return is_doubtful_experience = 1 ONLY when every detected work experience is clearly doubtful/non-industrial and confidence is high or medium.
 
-LOCATION:
-- Return ONLY: City, State, Country
-- Ignore village, taluka, tehsil, block names
-- If district is mentioned, treat it as City
-- Resolve State and Country from the district
-- Format priority:
-- City, State, Country
-- State, Country
-- Country
-- If City is not found, use the closest available location (administrative_area_level_3) as City and resolve State and Country
-- If only State and Country are confidently found, return "State, Country"
-- If only Country is confidently found, return "Country"
-- Never guess
+    DOUBTFUL_EXPERIENCE_CONFIDENCE:
+    - Allowed values ONLY: "high", "medium", or "low"
+    - Never return null for doubtful_experience_confidence
+    - Return "high" ONLY when explicit company/role/responsibility evidence clearly supports the is_doubtful_experience value
+    - Return "medium" when the decision is likely but some domain evidence is indirect, or when IT/PMO evidence comes clearly from roles, tools, methods, and responsibilities even if an explicit IT company name is omitted
+    - Return "low" when evidence is weak, incomplete, ambiguous, or conflicting
+    - If confidence is "low", set is_doubtful_experience = 0
 
-IS_ACTUAL_RESUME:
-- Return ONLY 0 or 1
-- 1 = actual resume document
-- 0 = fake document
+    DOUBTFUL_EXPERIENCE_REASON:
+    - Provide a short explanation (1 line) ONLY when is_doubtful_experience = 1
+    - Mention the explicit domain evidence, role, or company type used for the decision
+    - Example:
+    - "Experience only in banking and insurance sector"
+    - "Worked only in IT/software roles"
+    - If is_doubtful_experience = 0, return doubtful_experience_reason = null
 
-Clarification:
-- If the document is titled "Cover Letter" (or equivalent) and only briefly summarizes the candidate profile or experience without structured resume sections, set is_actual_resume = 0
+    LOCATION:
+    - Return ONLY: City, State, Country
+    - Ignore village, taluka, tehsil, block names
+    - If district is mentioned, treat it as City
+    - Resolve State and Country from the district
+    - Format priority:
+    - City, State, Country
+    - State, Country
+    - Country
+    - If City is not found, use the closest available location (administrative_area_level_3) as City and resolve State and Country
+    - If only State and Country are confidently found, return "State, Country"
+    - If only Country is confidently found, return "Country"
+    - Never guess
 
-Rules:
-- Set is_actual_resume = 1 IF the document contains a resume or CV section anywhere in the document
-- A document MAY contain a cover letter on one or more pages and still be an actual resume
-- Set is_actual_resume = 0 ONLY IF the document contains NO resume or CV content at all
-- If the document consists ONLY of a cover letter with no resume/CV sections, set is_actual_resume = 0
+    IS_ACTUAL_RESUME:
+    - Return ONLY 0 or 1
+    - 1 = actual resume document
+    - 0 = fake document
 
-OUTPUT RULES:
-- Return a single JSON object
-- Missing values must be null
-- Do NOT include explanations
-- Do NOT include markdown
-- Do NOT include extra text
+    Clarification:
+    - If the document is titled "Cover Letter" (or equivalent) and only briefly summarizes the candidate profile or experience without structured resume sections, set is_actual_resume = 0
+
+    Rules:
+    - Set is_actual_resume = 1 IF the document contains a resume or CV section anywhere in the document
+    - A document MAY contain a cover letter on one or more pages and still be an actual resume
+    - Set is_actual_resume = 0 ONLY IF the document contains NO resume or CV content at all
+    - If the document consists ONLY of a cover letter with no resume/CV sections, set is_actual_resume = 0
+
+    OUTPUT RULES:
+    - Return a single JSON object
+    - Missing values must be null
+    - Do NOT include explanations
+    - Do NOT include markdown
+    - Do NOT include extra text
 
 If the document is an image or scan, perform OCR first.`,
   'manual-resume-parce': '',
@@ -270,10 +285,14 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
 
 
-  // Sync expected JSON when active resume tab changes
-  useEffect(() => {
-    if (loadedResumes.length > 0 && loadedResumes[activeResumeIndex]) {
-      const activeItem = loadedResumes[activeResumeIndex];
+  // Track active resume state changes during render to avoid useEffect state updates
+  const [prevActiveResumeId, setPrevActiveResumeId] = useState<string | null>(null);
+  const activeItem = loadedResumes[activeResumeIndex];
+  const activeItemId = activeItem ? activeItem.id : null;
+
+  if (activeItemId !== prevActiveResumeId) {
+    setPrevActiveResumeId(activeItemId);
+    if (activeItem) {
       const targetJson = activeItem.expectedJson || DEFAULT_INITIAL_JSON;
       setExpectedJsonStr(
         Object.keys(targetJson).length > 0
@@ -282,7 +301,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
       );
       setJsonSyntaxError(null);
     }
-  }, [activeResumeIndex, loadedResumes.length]);
+  }
 
   // Direct PDF or ZIP file drop/select handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -313,9 +332,10 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         setActiveResumeIndex(0);
         setFileProcessingMsg(`Loaded ${newItems.length} PDF resume file(s).`);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('File upload error:', err);
-      setFileProcessingMsg(`Upload error: ${err?.message || 'Failed to process file'}`);
+      const errMsg = err instanceof Error ? err.message : 'Failed to process file';
+      setFileProcessingMsg(`Upload error: ${errMsg}`);
     }
 
     setTimeout(() => setFileProcessingMsg(null), 4000);
@@ -339,8 +359,9 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         updated[activeResumeIndex].expectedJson = parsed;
         setLoadedResumes(updated);
       }
-    } catch (err: any) {
-      setJsonSyntaxError(err?.message || 'Invalid JSON syntax');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Invalid JSON syntax';
+      setJsonSyntaxError(errMsg);
     }
   };
 
@@ -365,7 +386,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
     try {
       const parsedExpected = expectedJsonStr.trim() ? JSON.parse(expectedJsonStr) : {};
       onRunBatchBenchmark(loadedResumes, parsedExpected, selectedModelIds, systemPrompt);
-    } catch (err) {
+    } catch {
       setJsonSyntaxError('Please resolve JSON syntax errors before running benchmark.');
     }
   };
@@ -447,11 +468,10 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
               <button
                 key={resItem.id}
                 onClick={() => setActiveResumeIndex(idx)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all flex items-center space-x-1 ${
-                  activeResumeIndex === idx
+                className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all flex items-center space-x-1 ${activeResumeIndex === idx
                     ? 'bg-indigo-500 text-white font-bold shadow-md shadow-indigo-500/30'
                     : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
-                }`}
+                  }`}
               >
                 <FileText className="h-3 w-3" />
                 <span>{resItem.fileName}</span>
@@ -468,7 +488,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
             <MessageSquare className="h-4 w-4 text-cyan-400" />
             <span>System Extraction Prompt (AI Instructions)</span>
           </label>
-          
+
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-slate-400 font-semibold">Select AI Task Preset:</span>
             <select
@@ -560,11 +580,10 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
             value={expectedJsonStr}
             onChange={(e) => handleJsonChange(e.target.value)}
             rows={10}
-            className={`w-full rounded-xl border p-3 font-mono text-xs text-purple-200 placeholder-slate-600 focus:outline-none ${
-              jsonSyntaxError
+            className={`w-full rounded-xl border p-3 font-mono text-xs text-purple-200 placeholder-slate-600 focus:outline-none ${jsonSyntaxError
                 ? 'border-red-500/50 bg-red-950/10'
                 : 'border-slate-800 bg-slate-950 focus:border-purple-500'
-            }`}
+              }`}
             placeholder="Paste expected JSON object here or leave blank for schema extraction..."
           />
         </div>
@@ -619,11 +638,10 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
                       <div
                         key={model.id}
                         onClick={() => toggleModel(model.id)}
-                        className={`flex items-center justify-between rounded-lg p-2 cursor-pointer transition-all border ${
-                          isChecked
+                        className={`flex items-center justify-between rounded-lg p-2 cursor-pointer transition-all border ${isChecked
                             ? 'bg-cyan-500/10 border-cyan-500/30 text-white'
                             : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center space-x-2">
                           {isChecked ? (
@@ -666,11 +684,10 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         <button
           onClick={handleSubmit}
           disabled={isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0}
-          className={`flex items-center space-x-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-xl transition-all ${
-            isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0
+          className={`flex items-center space-x-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-xl transition-all ${isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0
               ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
               : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:opacity-90 shadow-cyan-500/20 active:scale-[0.98]'
-          }`}
+            }`}
         >
           {isRunning ? (
             <>
