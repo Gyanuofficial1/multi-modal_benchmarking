@@ -5,9 +5,10 @@ import { evaluateJsonAccuracy } from '../jsonEvaluator';
 export async function benchmarkSingleModel(
   model: AIModel,
   resumeItem: ResumeFileItem,
-  expectedJson: Record<string, any>,
+  expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
   config: ProviderApiConfig,
-  systemPrompt?: string
+  systemPrompt?: string,
+  globalExtractionMode?: 'TEXT' | 'MULTIMODAL'
 ): Promise<ModelBenchmarkResult> {
   try {
     const res = await fetch('/api/benchmark', {
@@ -18,6 +19,7 @@ export async function benchmarkSingleModel(
         resumeItem,
         expectedJson,
         systemPrompt,
+        globalExtractionMode,
       }),
     });
 
@@ -28,8 +30,9 @@ export async function benchmarkSingleModel(
 
     const result: ModelBenchmarkResult = await res.json();
     return result;
-  } catch (error: any) {
-    console.error(`Error benchmarking model ${model.name}:`, error);
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error(`Error benchmarking model ${model.name}:`, err);
     return {
       modelId: model.id,
       modelName: model.name,
@@ -47,7 +50,7 @@ export async function benchmarkSingleModel(
       estimatedCostInr: 0,
       accuracy: evaluateJsonAccuracy(expectedJson, ''),
       status: 'ERROR',
-      errorMessage: error?.message || 'Server API execution failed',
+      errorMessage: err.message || 'Server API execution failed',
       timestamp: new Date().toLocaleTimeString(),
     };
   }

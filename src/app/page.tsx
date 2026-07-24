@@ -9,7 +9,7 @@ import { ModelComparisonTable } from '../components/Dashboard/ModelComparisonTab
 import { RecommendationWizard } from '../components/Dashboard/RecommendationWizard';
 import { DetailedOutputModal } from '../components/Dashboard/DetailedOutputModal';
 import { LoginScreen } from '../components/LoginScreen';
-import { ModelBenchmarkResult, ProviderApiConfig, ResumeFileItem } from '../types/benchmark';
+import { ModelBenchmarkResult, ResumeFileItem } from '../types/benchmark';
 import { SUPPORTED_MODELS } from '../services/pricingMatrix';
 import { benchmarkSingleModel } from '../services/aiProviders';
 import { FileText, Archive } from 'lucide-react';
@@ -26,6 +26,7 @@ export default function Home() {
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsAuthenticated(token === 'session_active_benchmark');
   }, []);
 
@@ -37,9 +38,10 @@ export default function Home() {
   // Run Batch Multi-Model Benchmark with PARALLEL CONCURRENT execution!
   const handleRunBatchBenchmark = async (
     resumes: ResumeFileItem[],
-    expectedJson: Record<string, any>,
+    expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     selectedModelIds: string[],
-    systemPrompt: string
+    systemPrompt: string,
+    globalExtractionMode: 'TEXT' | 'MULTIMODAL'
   ) => {
     setIsRunning(true);
     setAllBatchResults([]);
@@ -58,7 +60,8 @@ export default function Home() {
           resumeItem,
           resumeExpectedJson,
           {},
-          systemPrompt
+          systemPrompt,
+          globalExtractionMode
         );
         cumulativeResults.push(result);
         setAllBatchResults([...cumulativeResults]);

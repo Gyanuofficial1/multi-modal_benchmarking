@@ -39,11 +39,13 @@ export async function POST(req: NextRequest) {
       resumeItem,
       expectedJson,
       systemPrompt,
+      globalExtractionMode,
     }: {
       model: AIModel;
       resumeItem: ResumeFileItem;
       expectedJson: Record<string, any>;
       systemPrompt?: string;
+      globalExtractionMode?: 'TEXT' | 'MULTIMODAL';
     } = body;
 
     const sysPrompt = (systemPrompt || '').trim();
@@ -76,8 +78,9 @@ export async function POST(req: NextRequest) {
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${apiKey}`;
 
-      const envVal = process.env.GEMINI_TEXT_EXTRACTION || process.env.GOOGLE_TEXT_EXTRACTION;
-      const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
+      const useRawFile = globalExtractionMode
+        ? globalExtractionMode === 'MULTIMODAL'
+        : shouldUseRawFile(process.env.GEMINI_TEXT_EXTRACTION || process.env.GOOGLE_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
 
       let parts: any[] = [];
       if (useRawFile && resumeItem.base64Data) {
@@ -135,8 +138,9 @@ export async function POST(req: NextRequest) {
 
       const vertexModelId = model.id.replace(/^vertex-/, '');
 
-      const envVal = process.env.VERTEX_TEXT_EXTRACTION;
-      const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
+      const useRawFile = globalExtractionMode
+        ? globalExtractionMode === 'MULTIMODAL'
+        : shouldUseRawFile(process.env.VERTEX_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
 
       let parts: any[] = [];
       if (useRawFile && resumeItem.base64Data) {
@@ -226,8 +230,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const envVal = process.env.OPENAI_TEXT_EXTRACTION;
-      const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
       actualExtractionMode = 'TEXT_PROMPT';
 
       const messages: any[] = [];
@@ -274,8 +276,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const envVal = process.env.ANTHROPIC_TEXT_EXTRACTION;
-      const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
+      const useRawFile = globalExtractionMode
+        ? globalExtractionMode === 'MULTIMODAL'
+        : shouldUseRawFile(process.env.ANTHROPIC_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
 
       const reqBody: any = {
         model: model.id,
@@ -381,8 +384,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const envVal = process.env.AZURE_TEXT_EXTRACTION;
-      const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
       actualExtractionMode = 'TEXT_PROMPT';
 
       const messages: any[] = [];
@@ -468,8 +469,9 @@ export async function POST(req: NextRequest) {
         cleanedToken = decodeURIComponent(cleanedToken);
       }
 
-      const envVal = process.env.BEDROCK_TEXT_EXTRACTION;
-      const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
+      const useRawFile = globalExtractionMode
+        ? globalExtractionMode === 'MULTIMODAL'
+        : shouldUseRawFile(process.env.BEDROCK_TEXT_EXTRACTION, resumeItem.extractionMode, resumeItem.extractedText);
 
       // Map model.id to AWS Bedrock model IDs
       const bedrockModelIds: Record<string, string> = {
@@ -727,8 +729,6 @@ export async function POST(req: NextRequest) {
         inputTokens = Math.round((resumeItem.extractedText.length + sysPrompt.length) / 4);
         outputTokens = Math.round(rawText.length / 4);
       } else {
-        const envVal = process.env.MISTRAL_TEXT_EXTRACTION;
-        const useRawFile = shouldUseRawFile(envVal, resumeItem.extractionMode, resumeItem.extractedText);
         actualExtractionMode = 'TEXT_PROMPT';
 
         const messages: any[] = [];

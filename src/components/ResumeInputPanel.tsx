@@ -25,7 +25,8 @@ interface ResumeInputPanelProps {
     resumes: ResumeFileItem[],
     expectedJson: Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
     selectedModelIds: string[],
-    systemPrompt: string
+    systemPrompt: string,
+    globalExtractionMode: 'TEXT' | 'MULTIMODAL'
   ) => void;
   isRunning: boolean;
 }
@@ -283,6 +284,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
 
   // Selected models list (empty by default)
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  const [globalExtractionMode, setGlobalExtractionMode] = useState<'TEXT' | 'MULTIMODAL'>('TEXT');
 
 
   // Track active resume state changes during render to avoid useEffect state updates
@@ -385,7 +387,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
     if (jsonSyntaxError || loadedResumes.length === 0) return;
     try {
       const parsedExpected = expectedJsonStr.trim() ? JSON.parse(expectedJsonStr) : {};
-      onRunBatchBenchmark(loadedResumes, parsedExpected, selectedModelIds, systemPrompt);
+      onRunBatchBenchmark(loadedResumes, parsedExpected, selectedModelIds, systemPrompt, globalExtractionMode);
     } catch {
       setJsonSyntaxError('Please resolve JSON syntax errors before running benchmark.');
     }
@@ -423,8 +425,39 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
           </p>
         </div>
 
-        {/* Upload Buttons */}
-        <div className="flex items-center space-x-2">
+        {/* Upload Buttons & Global Extraction Mode Toggle */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Global Extraction Mode Toggle */}
+          <div className="flex items-center space-x-2.5 rounded-xl border border-slate-800 bg-slate-950/60 p-1 shadow-inner">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider pl-2 shrink-0">
+              Extraction:
+            </span>
+            <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setGlobalExtractionMode('TEXT')}
+                className={`rounded-md px-3 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                  globalExtractionMode === 'TEXT'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Text Only
+              </button>
+              <button
+                type="button"
+                onClick={() => setGlobalExtractionMode('MULTIMODAL')}
+                className={`rounded-md px-3 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                  globalExtractionMode === 'MULTIMODAL'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Multimodal (PDF)
+              </button>
+            </div>
+          </div>
+
           <input
             type="file"
             ref={fileInputRef}
@@ -436,7 +469,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:opacity-90 px-6 py-2.5 text-xs font-extrabold text-white shadow-xl shadow-cyan-600/20 transition-all active:scale-95"
+            className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:opacity-90 px-6 py-2.5 text-xs font-extrabold text-white shadow-xl shadow-cyan-600/20 transition-all active:scale-95 cursor-pointer shrink-0"
           >
             <Upload className="h-4 w-4" />
             <span>Upload PDF / ZIP (Up to 100 Resumes)</span>
