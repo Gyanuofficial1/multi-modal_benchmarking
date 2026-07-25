@@ -124,10 +124,10 @@ const PRESET_PROMPTS: Record<string, string> = {
     - "female"
     - "other"
     - Detect from:
-    - Explicit gender mention
-    - Pronouns (he/him → male, she/her → female)
-    - If gender cannot be confidently determined, return null
-    - Never guess based on name alone
+        1. Explicit gender mention
+        2. Pronouns (e.g., he/him → male, she/her → female)
+        3. Candidate's first name: If gender is not explicitly mentioned, you MUST infer the gender based on the candidate's first name (e.g., "Pradeep" → male, "Anjali" → female, "Niteesh" → male, "Sarah" → female).
+    - Only return null if the first name is completely gender-neutral, ambiguous, or if it is impossible to determine.
 
     WORK_STAGE:
     - Allowed values ONLY:
@@ -172,29 +172,38 @@ const PRESET_PROMPTS: Record<string, string> = {
 
     IS_DOUBTFUL_EXPERIENCE:
     - Return ONLY 0 or 1
-    - 1 = Candidate experience is in doubtful domains
-    - 0 = Candidate has at least one trusted/manual/industrial domain experience
+    - 1 = Candidate experience is entirely in doubtful domains (non-manufacturing, non-industrial)
+    - 0 = Candidate has at least one trusted/manual/industrial domain experience, OR has accounting/HR/payroll/back-office experience, OR experience is unclear.
 
-    DEFINITION:
-    Set is_doubtful_experience = 1 IF:
-    - ALL detected work experience falls under non manufacturing / non industrial domains such as: Banking / Insurance / Hospital / Teaching / Academic / Coaching / IT / Software / PMO / Project Coordination / Medical Store / Gym / Fitness / BPO / KPO / Tourism / Hospitality / Restaurants / Food Delivery
-    otherwise, set is_doubtful_experience = 0
+    CRITICAL SEMANTIC CLARIFICATION:
+    - "is_doubtful_experience" does NOT mean "fake", "suspicious", or "fabricated" experience.
+    - It is simply a technical classification flag for "non-industrial / desk-job / services" domains.
+    - Even if the companies are 100% authentic and famous (e.g., Paytm, Razorpay, HDFC Bank, Axis Bank), you MUST still output is_doubtful_experience = 1 if all of their roles belong to the doubtful domains listed below.
 
-    IMPORTANT RULES:
-    - Dont classify as doubtful if there is ANY experience in accounting, HR, payroll, data entry, back office related work as set is_doubtful_experience = 0 even if the candidate has experience in other domains as well
-    - If experience domain is unclear or insufficient, return is_doubtful_experience = 0
-    - Never guess
-    - Classification must be based only on explicit company, role, or responsibilities
+    DEFINITION OF DOUBTFUL DOMAINS:
+    Banking, Fintech, Insurance, Hospital, Medical Clinic, Pharmacy, Teaching, Academic, Coaching, IT, Software, PMO, Project Coordination, Medical Store, Gym, Fitness, BPO, KPO, Customer Support, Tourism, Hospitality, Restaurants, Food Delivery, E-commerce, Retail Sales, Corporate Sales, Business Development.
 
-    FINAL DECISION RULE WHEN THERE IS NO MANUAL REVIEW:
-    - Always return is_doubtful_experience as ONLY 0 or 1. Never return null for is_doubtful_experience.
-    - If experience domain is unclear, insufficient, weak, low confidence, or conflicting, return is_doubtful_experience = 0.
-    - Return is_doubtful_experience = 1 ONLY when every detected work experience is clearly doubtful/non-industrial and confidence is high or medium.
+    CLASSIFICATION LOGIC STEPS:
+    Follow these steps in order to decide the value:
+
+    Step 1: Check for manual, industrial, or manufacturing work.
+    - If the candidate has ANY experience in factories, plants, manufacturing units, workshop site work, mechanical, electrical, civil, production engineering, machine operations, maintenance, or similar industrial domains -> Set is_doubtful_experience = 0.
+
+    Step 2: Check for administrative exclusions (accounting, HR, payroll, data entry, back-office).
+    - If the candidate has ANY experience working specifically as an Accountant, HR Coordinator, Payroll clerk, Data Entry operator, or Back-Office administrative staff -> Set is_doubtful_experience = 0.
+    - Sales, Business Development, Key Account Management, Merchant Acquisition, Payment Gateway integrations, or Zonal/Branch Manager roles in Fintech, E-commerce, or Banking companies are NOT considered accounting, payroll, or back-office work. They are sales/business operations in the Fintech/Banking domain and do NOT trigger this exclusion.
+
+    Step 3: Check if ALL experiences fall under doubtful domains.
+    - If ALL identified work experiences are solely within the doubtful domains listed above (e.g. Sales in Fintech/Banks, software development, e-commerce, banking, teaching, BPO) -> Set is_doubtful_experience = 1.
+    - Otherwise -> Set is_doubtful_experience = 0.
+
+    Step 4: Handle unclear or low confidence cases.
+    - If experience domain is unclear, insufficient, weak, or conflicting -> Set is_doubtful_experience = 0.
 
     DOUBTFUL_EXPERIENCE_CONFIDENCE:
     - Allowed values ONLY: "high", "medium", or "low"
     - Never return null for doubtful_experience_confidence
-    - Return "high" ONLY when explicit company/role/responsibility evidence clearly supports the is_doubtful_experience value
+    - Return "high" when evidence is clear and certain
     - Return "medium" when the decision is likely but some domain evidence is indirect, or when IT/PMO evidence comes clearly from roles, tools, methods, and responsibilities even if an explicit IT company name is omitted
     - Return "low" when evidence is weak, incomplete, ambiguous, or conflicting
     - If confidence is "low", set is_doubtful_experience = 0
@@ -203,19 +212,20 @@ const PRESET_PROMPTS: Record<string, string> = {
     - Provide a short explanation (1 line) ONLY when is_doubtful_experience = 1
     - Mention the explicit domain evidence, role, or company type used for the decision
     - Example:
-    - "Experience only in banking and insurance sector"
-    - "Worked only in IT/software roles"
+      - "Experience only in banking and insurance sector"
+      - "Worked only in IT/software roles"
     - If is_doubtful_experience = 0, return doubtful_experience_reason = null
 
     LOCATION:
     - Return ONLY: City, State, Country
+    - Search the entire document (including job experience section) for city/state info. If multiple locations, choose the most recent/current location.
     - Ignore village, taluka, tehsil, block names
     - If district is mentioned, treat it as City
     - Resolve State and Country from the district
     - Format priority:
-    - City, State, Country
-    - State, Country
-    - Country
+      - City, State, Country
+      - State, Country
+      - Country
     - If City is not found, use the closest available location (administrative_area_level_3) as City and resolve State and Country
     - If only State and Country are confidently found, return "State, Country"
     - If only Country is confidently found, return "Country"
