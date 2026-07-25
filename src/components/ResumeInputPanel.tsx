@@ -34,6 +34,18 @@ interface ResumeInputPanelProps {
 // Blank Initial JSON schema by default
 const DEFAULT_INITIAL_JSON = {};
 
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 const PRESET_OPTIONS = [
   { id: 'initial-parsing', name: '1. Initial Parsing' },
   { id: 'manual-resume-parce', name: '2. Manual Resume Parce' },
@@ -348,46 +360,63 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
       const file = files[0];
       const lowerName = file.name.toLowerCase();
 
-      let processedItems: ResumeFileItem[] = [];
       if (lowerName.endsWith('.zip')) {
-        processedItems = await processZipArchive(file);
+        setFileProcessingMsg('Uploading ZIP file to server and extracting...');
+        const base64Data = await fileToBase64(file);
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: file.name, base64Data, mimeType: file.type }),
+        });
+        if (!res.ok) {
+          throw new Error(`Upload failed: ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (data.isZip && data.items) {
+          setLoadedResumes(data.items);
+          setActiveResumeIndex(0);
+          setFileProcessingMsg(`Loaded & extracted ${data.items.length} file(s) on server and uploaded to S3!`);
+        } else {
+          throw new Error(data.message || 'Server did not return items for the ZIP file');
+        }
       } else {
+        const processedItems: ResumeFileItem[] = [];
         for (let i = 0; i < files.length; i++) {
           const item = await processSingleFile(files[i]);
           processedItems.push(item);
         }
-      }
 
-      if (processedItems.length === 0) {
-        setFileProcessingMsg('No supported files found.');
-        return;
-      }
+        if (processedItems.length === 0) {
+          setFileProcessingMsg('No supported files found.');
+          return;
+        }
 
-      if (isS3Enabled) {
-        setFileProcessingMsg('Uploading files to AWS S3...');
-        const s3UploadedItems: ResumeFileItem[] = [];
-        for (const item of processedItems) {
-          if (item.base64Data) {
-            const s3Key = await uploadToS3(item.fileName, item.base64Data, item.mimeType);
-            if (s3Key) {
-              s3UploadedItems.push({
-                ...item,
-                s3Key,
-              });
+        if (isS3Enabled) {
+          setFileProcessingMsg('Uploading files to AWS S3...');
+          const s3UploadedItems: ResumeFileItem[] = [];
+          for (const item of processedItems) {
+            if (item.base64Data) {
+              const s3Key = await uploadToS3(item.fileName, item.base64Data, item.mimeType);
+              if (s3Key) {
+                s3UploadedItems.push({
+                  ...item,
+                  s3Key,
+                });
+              } else {
+                s3UploadedItems.push(item);
+              }
             } else {
               s3UploadedItems.push(item);
             }
-          } else {
-            s3UploadedItems.push(item);
           }
+          setLoadedResumes(s3UploadedItems);
+          setActiveResumeIndex(0);
+          setFileProcessingMsg(`Loaded & uploaded ${s3UploadedItems.length} file(s) to S3!`);
+        } else {
+          setLoadedResumes(processedItems);
+          setActiveResumeIndex(0);
+          setFileProcessingMsg(`Loaded ${processedItems.length} file(s) locally.`);
         }
-        setLoadedResumes(s3UploadedItems);
-        setActiveResumeIndex(0);
-        setFileProcessingMsg(`Loaded & uploaded ${s3UploadedItems.length} file(s) to S3!`);
-      } else {
-        setLoadedResumes(processedItems);
-        setActiveResumeIndex(0);
-        setFileProcessingMsg(`Loaded ${processedItems.length} file(s) locally.`);
       }
     } catch (err) {
       console.error('File upload error:', err);
