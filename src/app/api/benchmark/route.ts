@@ -344,6 +344,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: model.id,
           response_format: { type: 'json_object' },
+          max_tokens: 4096,
           messages,
         }),
       });
@@ -529,6 +530,7 @@ export async function POST(req: NextRequest) {
 
       const bodyPayload: any = {
         response_format: { type: 'json_object' },
+        max_tokens: 4096,
         messages,
       };
 

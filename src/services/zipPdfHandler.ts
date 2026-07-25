@@ -140,27 +140,66 @@ export async function extractTextFromDocxBuffer(arrayBuffer: ArrayBuffer): Promi
   }
 }
 
-// Client-side fallback text extractor for binary .doc files by scanning printable ASCII characters
+// Client-side fallback text extractor for binary .doc files by scanning printable ASCII and UTF-16 characters
 export function extractTextFromDocBuffer(arrayBuffer: ArrayBuffer): string {
   try {
     const bytes = new Uint8Array(arrayBuffer);
-    let text = '';
-    let temp = '';
-    for (let i = 0; i < bytes.length; i++) {
-      const char = bytes[i];
-      if ((char >= 32 && char <= 126) || char === 10 || char === 13 || char === 9) {
-        temp += String.fromCharCode(char);
+    
+    // 1. Extract UTF-16LE strings (common in standard Word Doc text content)
+    let utf16Text = '';
+    let utf16Temp = '';
+    for (let i = 0; i < bytes.length - 1; i += 2) {
+      const b1 = bytes[i];
+      const b2 = bytes[i + 1];
+      
+      const isPrintable = (b1 >= 32 && b1 <= 126 && b2 === 0) ||
+                          ((b1 === 10 || b1 === 13 || b1 === 9) && b2 === 0);
+                          
+      if (isPrintable) {
+        utf16Temp += String.fromCharCode(b1);
       } else {
-        if (temp.length >= 4) {
-          text += temp + ' ';
+        if (utf16Temp.length >= 4) {
+          utf16Text += utf16Temp + ' ';
         }
-        temp = '';
+        utf16Temp = '';
       }
     }
-    if (temp.length >= 4) {
-      text += temp;
+    if (utf16Temp.length >= 4) {
+      utf16Text += utf16Temp;
     }
-    return text.replace(/\s+/g, ' ').trim();
+    
+    // 2. Extract 8-bit ASCII strings
+    let asciiText = '';
+    let asciiTemp = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i];
+      const isPrintable = (b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9;
+      if (isPrintable) {
+        asciiTemp += String.fromCharCode(b);
+      } else {
+        if (asciiTemp.length >= 4) {
+          asciiText += asciiTemp + ' ';
+        }
+        asciiTemp = '';
+      }
+    }
+    if (asciiTemp.length >= 4) {
+      asciiText += asciiTemp;
+    }
+    
+    const cleanText = (text: string) => {
+      return text
+        .replace(/Root Entry|WordDocument|ObjectPool|Directory|SummaryInformation|DocumentSummaryInformation|CompObj/g, '')
+        .replace(/Normal\s+Default\s+Paragraph\s+Font/g, '')
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const cleanedUtf16 = cleanText(utf16Text);
+    const cleanedAscii = cleanText(asciiText);
+    
+    return cleanedUtf16.length > cleanedAscii.length ? cleanedUtf16 : cleanedAscii;
   } catch (err) {
     console.warn('Error parsing doc:', err);
     return '';

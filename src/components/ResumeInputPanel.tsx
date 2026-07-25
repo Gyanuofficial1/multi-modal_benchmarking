@@ -236,11 +236,27 @@ const PRESET_PROMPTS: Record<string, string> = {
     - If the document consists ONLY of a cover letter with no resume/CV sections, set is_actual_resume = 0
 
     OUTPUT RULES:
-    - Return a single JSON object
-    - Missing values must be null
-    - Do NOT include explanations
-    - Do NOT include markdown
-    - Do NOT include extra text
+    - Return a single JSON object matching the exact structure and keys shown in the template below.
+    - Missing values must be null.
+    - Do NOT include explanations, introductory text, or concluding text.
+    - Do NOT include comments (e.g., // or /* */) inside the JSON.
+    - Do NOT use single quotes. All keys and string values must use double quotes.
+    - Do NOT include trailing commas.
+
+    EXPECTED JSON OUTPUT STRUCTURE TEMPLATE (Example):
+    {
+      "name": "Anjali Solanki",
+      "email": "anjalisolanki205@gmail.com",
+      "phone": "7201055434",
+      "country_code": "91",
+      "gender": "female",
+      "work_stage": "experience",
+      "location": "Ahmedabad, Gujarat, India",
+      "is_actual_resume": 1,
+      "is_doubtful_experience": 0,
+      "doubtful_experience_confidence": "high",
+      "doubtful_experience_reason": null
+    }
 
 If the document is an image or scan, perform OCR first.`,
   'manual-resume-parce': '',
@@ -535,33 +551,30 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setGlobalExtractionMode('TEXT_ONLY')}
-                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
-                  globalExtractionMode === 'TEXT_ONLY'
+                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${globalExtractionMode === 'TEXT_ONLY'
                     ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 font-bold'
                     : 'text-slate-400 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 Text Only
               </button>
               <button
                 type="button"
                 onClick={() => setGlobalExtractionMode('AUTO')}
-                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
-                  globalExtractionMode === 'AUTO'
+                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${globalExtractionMode === 'AUTO'
                     ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25 font-bold'
                     : 'text-slate-400 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 Auto
               </button>
               <button
                 type="button"
                 onClick={() => setGlobalExtractionMode('FILE_ONLY')}
-                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
-                  globalExtractionMode === 'FILE_ONLY'
+                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${globalExtractionMode === 'FILE_ONLY'
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25 font-bold'
                     : 'text-slate-400 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 Only File Upload
               </button>
@@ -618,8 +631,8 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
                   key={resItem.id}
                   onClick={() => setActiveResumeIndex(idx)}
                   className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all flex items-center space-x-1 ${activeResumeIndex === idx
-                      ? 'bg-indigo-500 text-white font-bold shadow-md shadow-indigo-500/30'
-                      : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
+                    ? 'bg-indigo-500 text-white font-bold shadow-md shadow-indigo-500/30'
+                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
                     }`}
                 >
                   {getFileIcon(resItem.fileType)}
@@ -734,8 +747,8 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
             onChange={(e) => handleJsonChange(e.target.value)}
             rows={10}
             className={`w-full rounded-xl border p-3 font-mono text-xs text-purple-200 placeholder-slate-600 focus:outline-none ${jsonSyntaxError
-                ? 'border-red-500/50 bg-red-950/10'
-                : 'border-slate-800 bg-slate-950 focus:border-purple-500'
+              ? 'border-red-500/50 bg-red-950/10'
+              : 'border-slate-800 bg-slate-950 focus:border-purple-500'
               }`}
             placeholder="Paste expected JSON object here or leave blank for schema extraction..."
           />
@@ -792,8 +805,8 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
                         key={model.id}
                         onClick={() => toggleModel(model.id)}
                         className={`flex items-center justify-between rounded-lg p-2 cursor-pointer transition-all border ${isChecked
-                            ? 'bg-cyan-500/10 border-cyan-500/30 text-white'
-                            : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
+                          ? 'bg-cyan-500/10 border-cyan-500/30 text-white'
+                          : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
                           }`}
                       >
                         <div className="flex items-center space-x-2">
@@ -838,8 +851,8 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
           onClick={handleSubmit}
           disabled={isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0}
           className={`flex items-center space-x-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-xl transition-all ${isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0
-              ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-              : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:opacity-90 shadow-cyan-500/20 active:scale-[0.98]'
+            ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+            : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:opacity-90 shadow-cyan-500/20 active:scale-[0.98]'
             }`}
         >
           {isRunning ? (

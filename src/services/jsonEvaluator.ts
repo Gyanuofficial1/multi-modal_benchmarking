@@ -103,6 +103,98 @@ function compareArraySimilarity(arr1: any[], arr2: any[]): number {
   return unionSize > 0 ? Math.round((matches / unionSize) * 100) : 0;
 }
 
+function cleanAndParseJson(rawResponse: string): any {
+  let cleanText = rawResponse.trim();
+  if (!cleanText) {
+    throw new Error('Empty response received');
+  }
+
+  // 1. Extract JSON block from markdown wrapping
+  if (cleanText.includes('```')) {
+    const match = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (match && match[1]) {
+      cleanText = match[1].trim();
+    }
+  }
+
+  // 2. Find the first '{' or '['
+  const startIndex = cleanText.search(/[\{\[]/);
+  if (startIndex === -1) {
+    throw new Error('No JSON object or array found in response');
+  }
+
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escape = false;
+  let endIndex = -1;
+
+  for (let i = startIndex; i < cleanText.length; i++) {
+    const char = cleanText[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') {
+        openBraces++;
+      } else if (char === '}') {
+        openBraces--;
+      } else if (char === '[') {
+        openBrackets++;
+      } else if (char === ']') {
+        openBrackets--;
+      }
+
+      // If we balanced the first opened brace/bracket, we stop
+      if (openBraces === 0 && openBrackets === 0) {
+        endIndex = i;
+        break;
+      }
+    }
+  }
+
+  // Case A: Valid balanced JSON block found (e.g. discards extra trailing braces)
+  if (endIndex !== -1) {
+    const jsonCandidate = cleanText.substring(startIndex, endIndex + 1);
+    return JSON.parse(jsonCandidate);
+  }
+
+  // Case B: Truncated JSON (e.g. cuts off before closing) - attempt auto-repair
+  let truncatedCandidate = cleanText.substring(startIndex);
+  if (inString) {
+    truncatedCandidate += '"';
+  }
+
+  // Clean trailing punctuation that would break JSON parsing
+  truncatedCandidate = truncatedCandidate.replace(/,\s*$/, '');
+  truncatedCandidate = truncatedCandidate.replace(/:\s*$/, '');
+
+  // Append missing closing braces/brackets in order
+  let suffix = '';
+  let tempOpenBraces = openBraces;
+  let tempOpenBrackets = openBrackets;
+  while (tempOpenBraces > 0) {
+    suffix += '}';
+    tempOpenBraces--;
+  }
+  while (tempOpenBrackets > 0) {
+    suffix += ']';
+    tempOpenBrackets--;
+  }
+
+  const repairedText = truncatedCandidate + suffix;
+  return JSON.parse(repairedText);
+}
+
 export function evaluateJsonAccuracy(
   expectedJson: Record<string, any>,
   rawResponse: string
@@ -110,24 +202,8 @@ export function evaluateJsonAccuracy(
   let parsedActual: any = null;
   let parseError: string | undefined;
 
-  // Extract JSON block from response text (handling ```json code blocks)
   try {
-    let cleanText = rawResponse.trim();
-    if (cleanText.includes('```')) {
-      const match = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (match && match[1]) {
-        cleanText = match[1].trim();
-      }
-    }
-    
-    // Find first { or [ and last } or ]
-    const firstBrace = cleanText.search(/[\{\[]/);
-    const lastBrace = cleanText.search(/[\}\]][^}]*$/);
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
-      cleanText = cleanText.substring(firstBrace, lastBrace + 1);
-    }
-
-    parsedActual = JSON.parse(cleanText);
+    parsedActual = cleanAndParseJson(rawResponse);
   } catch (err: any) {
     parseError = err?.message || 'Invalid JSON output generated';
   }
