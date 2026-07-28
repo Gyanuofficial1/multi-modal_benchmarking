@@ -233,8 +233,9 @@ export const SUPPORTED_MODELS: AIModel[] = [
   },
 
   // ----------------------------------------------------
-  // 6. AWS Bedrock (Sorted by lowest cost first)
+  // 6. AWS Bedrock (Sorted by lowest cost first) - COMMENTED OUT FOR NOW
   // ----------------------------------------------------
+  /*
   {
     id: 'bedrock-deepseek-v3-1',
     name: 'Bedrock DeepSeek V3.1',
@@ -261,6 +262,7 @@ export const SUPPORTED_MODELS: AIModel[] = [
     defaultSimulatedLatencyMs: 380,
     accuracyMultiplier: 94,
   },
+  */
 
   // ----------------------------------------------------
   // 7. Mistral AI Direct (Sorted by lowest cost first)
@@ -344,7 +346,6 @@ export function formatINR(amountInr: number): string {
 
 export function formatInrPer1M(amountUsd: number): string {
   const inr = amountUsd * USD_TO_INR;
-  if (inr < 1) return `₹${inr.toFixed(2)}`;
   return `₹${inr.toFixed(2)}`;
 }
 

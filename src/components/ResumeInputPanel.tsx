@@ -714,7 +714,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         </div>
       )}
 
-      {/* 4. Lightweight Compact Model Selector */}
+      {/* 4. Grouped Model Selector */}
       <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -735,32 +735,53 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
           </div>
         </div>
 
-        {/* Compact Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
-          {SUPPORTED_MODELS.map((model) => {
-            const isChecked = selectedModelIds.includes(model.id);
-            return (
-              <div
-                key={model.id}
-                onClick={() => toggleModel(model.id)}
-                className={`rounded-xl p-2 cursor-pointer transition-all border flex flex-col justify-between space-y-1 text-xs ${
-                  isChecked
-                    ? 'border-cyan-500/60 bg-cyan-950/30 text-white shadow-sm'
-                    : 'border-slate-800/80 bg-slate-950/40 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-[11px] truncate text-white">{model.name}</span>
-                  {isChecked ? (
-                    <CheckSquare className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                  ) : (
-                    <Square className="h-3.5 w-3.5 text-slate-600 shrink-0" />
-                  )}
-                </div>
+        {/* Grouped Lists */}
+        <div className="space-y-3">
+          {providersGroup.map((prov) => {
+            const groupModels = SUPPORTED_MODELS.filter((m) => m.provider === prov.providerId);
+            if (groupModels.length === 0) return null;
 
-                <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono pt-1 border-t border-slate-800/60">
-                  <span>{model.providerName.split(' ')[0]}</span>
-                  <span className="text-emerald-400">{formatInrPer1M(model.inputCostPer1M)}</span>
+            return (
+              <div key={prov.providerId} className="space-y-1.5 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/80">
+                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider pl-1.5 border-l-2 border-cyan-500">
+                  {prov.name}
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pt-1">
+                  {groupModels.map((model) => {
+                    const isChecked = selectedModelIds.includes(model.id);
+                    return (
+                      <div
+                        key={model.id}
+                        onClick={() => toggleModel(model.id)}
+                        className={`rounded-lg p-2 cursor-pointer transition-all border flex flex-col justify-between space-y-1 text-xs ${
+                          isChecked
+                            ? 'border-cyan-500/60 bg-cyan-950/30 text-white shadow-sm'
+                            : 'border-slate-800/80 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[11px] truncate text-white">{model.name}</span>
+                          {isChecked ? (
+                            <CheckSquare className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                          ) : (
+                            <Square className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+                          )}
+                        </div>
+
+                        <div className="flex flex-col text-[8.5px] font-mono pt-1 border-t border-slate-800/60 leading-tight">
+                          <div className="flex justify-between text-slate-400">
+                            <span>Input:</span>
+                            <span className="text-emerald-400 font-bold">{formatInrPer1M(model.inputCostPer1M)}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-400 mt-0.5">
+                            <span>Output:</span>
+                            <span className="text-purple-400 font-bold">{formatInrPer1M(model.outputCostPer1M)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

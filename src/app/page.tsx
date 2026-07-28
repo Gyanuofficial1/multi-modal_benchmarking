@@ -34,15 +34,58 @@ export default function Home() {
   const [isCodeModalOpen, setIsCodeModalOpen] = useState<boolean>(false);
   const [activeDiffResume, setActiveDiffResume] = useState<string | null>(null);
 
+  // Historical Runs State
+  const [historicalRuns, setHistoricalRuns] = useState<any[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string>('');
+
+  const fetchRunsList = async () => {
+    try {
+      const res = await fetch('/api/runs');
+      const data = await res.json();
+      if (data.success && data.runs) {
+        setHistoricalRuns(data.runs);
+      }
+    } catch (err) {
+      console.error('Failed to fetch runs:', err);
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsAuthenticated(token === 'session_active_benchmark');
+    const isAuth = token === 'session_active_benchmark';
+    setIsAuthenticated(isAuth);
+    if (isAuth) {
+      fetchRunsList();
+    }
   }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
     setIsAuthenticated(false);
+  };
+
+  const handleLoadRun = async (runId: string) => {
+    if (!runId) {
+      setSelectedRunId('');
+      setAllBatchResults([]);
+      setSelectedBestModel(null);
+      setSelectedHeadToHeadIds([]);
+      return;
+    }
+
+    try {
+      setSelectedRunId(runId);
+      const res = await fetch(`/api/runs?runId=${runId}`);
+      const data = await res.json();
+      if (data.success && data.run) {
+        setAllBatchResults(data.run.results || []);
+        setSelectedBestModel(null);
+        setSelectedHeadToHeadIds([]);
+      }
+    } catch (err) {
+      console.error('Failed to load detailed run:', err);
+    }
   };
 
   // Run Batch Multi-Model Benchmark with PARALLEL CONCURRENT execution!
@@ -92,6 +135,27 @@ export default function Home() {
         return scoreB - scoreA;
       })[0];
       setSelectedBestModel(topModel);
+    }
+
+    // Save benchmark run to AWS DynamoDB / In-Memory
+    try {
+      const res = await fetch('/api/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          results: cumulativeResults,
+          resumesList: resumes.map((r) => r.fileName),
+          resumesCount: resumes.length,
+          modelsCount: selectedModelIds.length,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.runId) {
+        setSelectedRunId(data.runId);
+        fetchRunsList();
+      }
+    } catch (err) {
+      console.error('Failed to save benchmark run:', err);
     }
 
     setIsRunning(false);
@@ -162,6 +226,9 @@ export default function Home() {
         onExportResults={handleExportResults}
         hasResults={allBatchResults.length > 0}
         onLogout={handleLogout}
+        historicalRuns={historicalRuns}
+        selectedRunId={selectedRunId}
+        onLoadRun={handleLoadRun}
       />
 
       {/* Main Content Area */}
