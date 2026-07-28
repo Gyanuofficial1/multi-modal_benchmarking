@@ -1,15 +1,21 @@
 'use client';
 
 import React from 'react';
-import { Zap, IndianRupee, Target, Award } from 'lucide-react';
+import { Zap, IndianRupee, Target, Award, CheckCircle2 } from 'lucide-react';
 import { ModelBenchmarkResult } from '../../types/benchmark';
 import { formatINR, formatLatency } from '../../services/pricingMatrix';
 
 interface SummaryCardsProps {
   results: ModelBenchmarkResult[];
+  onSelectBestModel?: (result: ModelBenchmarkResult) => void;
+  selectedBestModelId?: string | null;
 }
 
-export const SummaryCards: React.FC<SummaryCardsProps> = ({ results }) => {
+export const SummaryCards: React.FC<SummaryCardsProps> = ({
+  results,
+  onSelectBestModel,
+  selectedBestModelId,
+}) => {
   if (results.length === 0) return null;
 
   const validResults = results.filter((r) => r.status === 'SUCCESS');
@@ -39,89 +45,104 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ results }) => {
 
   const overallWinner = sortedByRank[0];
 
+  const renderCard = (
+    title: string,
+    model: ModelBenchmarkResult,
+    icon: React.ReactNode,
+    borderColor: string,
+    accentColor: string,
+    metricText: React.ReactNode
+  ) => {
+    const isSelected = selectedBestModelId === model.modelId;
+
+    return (
+      <div
+        onClick={() => onSelectBestModel && onSelectBestModel(model)}
+        className={`relative overflow-hidden rounded-2xl border p-4 shadow-xl transition-all cursor-pointer group ${
+          isSelected
+            ? 'border-emerald-500 bg-emerald-950/20 ring-2 ring-emerald-500/50'
+            : `${borderColor} bg-slate-900/80 hover:border-cyan-500/50`
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <span className={`text-xs font-bold uppercase tracking-wider ${accentColor}`}>
+            {title}
+          </span>
+          <div className="rounded-lg bg-slate-800 p-2 text-white group-hover:scale-110 transition-transform">
+            {icon}
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-0.5">
+          <div className="flex items-center space-x-1.5">
+            <h4 className="text-base font-black text-white">{model.modelName}</h4>
+            {isSelected && <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />}
+          </div>
+          <p className="text-xs text-slate-400">{model.providerName}</p>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
+          {metricText}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {/* 1. Overall Winner */}
-      <div className="relative overflow-hidden rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 to-slate-900 p-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
-            Best Overall ATS Winner
-          </span>
-          <div className="rounded-lg bg-indigo-500/20 p-2 text-indigo-300">
-            <Award className="h-5 w-5" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <h4 className="text-base font-black text-white">{overallWinner.modelName}</h4>
-          <p className="text-xs text-indigo-200/80">{overallWinner.providerName}</p>
-        </div>
-        <div className="mt-3 flex items-center justify-between border-t border-indigo-500/20 pt-2 text-xs">
-          <span className="text-slate-400">Accuracy: <strong className="text-white">{overallWinner.accuracy.overallAccuracy}%</strong></span>
+      {renderCard(
+        'Best Overall Winner',
+        overallWinner,
+        <Award className="h-5 w-5 text-indigo-400" />,
+        'border-indigo-500/30',
+        'text-indigo-400',
+        <>
+          <span className="text-slate-400">Score: <strong className="text-white">{overallWinner.accuracy.overallAccuracy}%</strong></span>
           <span className="text-slate-400">Cost: <strong className="text-emerald-400">{formatINR(overallWinner.estimatedCostInr || overallWinner.estimatedCost * 86.5)}</strong></span>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* 2. Fastest Speed */}
-      <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-950/30 to-slate-900 p-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-            Fastest Response Time
-          </span>
-          <div className="rounded-lg bg-amber-500/20 p-2 text-amber-300">
-            <Zap className="h-5 w-5" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <h4 className="text-base font-black text-white">{fastest.modelName}</h4>
-          <p className="text-xs text-amber-200/80">{fastest.providerName}</p>
-        </div>
-        <div className="mt-3 flex items-center justify-between border-t border-amber-500/20 pt-2 text-xs">
+      {renderCard(
+        'Fastest Speed',
+        fastest,
+        <Zap className="h-5 w-5 text-amber-400" />,
+        'border-amber-500/30',
+        'text-amber-400',
+        <>
           <span className="text-slate-400">Latency:</span>
           <span className="font-mono font-bold text-amber-400">{formatLatency(fastest.latencyMs)}</span>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* 3. Lowest Cost in INR */}
-      <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 to-slate-900 p-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-            Lowest Extraction Cost
-          </span>
-          <div className="rounded-lg bg-emerald-500/20 p-2 text-emerald-300">
-            <IndianRupee className="h-5 w-5" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <h4 className="text-base font-black text-white">{cheapest.modelName}</h4>
-          <p className="text-xs text-emerald-200/80">{cheapest.providerName}</p>
-        </div>
-        <div className="mt-3 flex items-center justify-between border-t border-emerald-500/20 pt-2 text-xs">
+      {renderCard(
+        'Lowest Parse Cost',
+        cheapest,
+        <IndianRupee className="h-5 w-5 text-emerald-400" />,
+        'border-emerald-500/30',
+        'text-emerald-400',
+        <>
           <span className="text-slate-400">Cost per parse:</span>
           <span className="font-mono font-bold text-emerald-400">
             {formatINR(cheapest.estimatedCostInr || cheapest.estimatedCost * 86.5)}
           </span>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* 4. Highest Accuracy */}
-      <div className="relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/30 to-slate-900 p-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
-            Most Accurate JSON Output
-          </span>
-          <div className="rounded-lg bg-cyan-500/20 p-2 text-cyan-300">
-            <Target className="h-5 w-5" />
-          </div>
-        </div>
-        <div className="mt-3">
-          <h4 className="text-base font-black text-white">{mostAccurate.modelName}</h4>
-          <p className="text-xs text-cyan-200/80">{mostAccurate.providerName}</p>
-        </div>
-        <div className="mt-3 flex items-center justify-between border-t border-cyan-500/20 pt-2 text-xs">
+      {renderCard(
+        'Max Accuracy',
+        mostAccurate,
+        <Target className="h-5 w-5 text-cyan-400" />,
+        'border-cyan-500/30',
+        'text-cyan-400',
+        <>
           <span className="text-slate-400">JSON Score:</span>
           <span className="font-mono font-bold text-cyan-400">{mostAccurate.accuracy.overallAccuracy}%</span>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 };

@@ -8,9 +8,15 @@ import { formatINR, formatLatency } from '../../services/pricingMatrix';
 
 interface RecommendationWizardProps {
   results: ModelBenchmarkResult[];
+  onSelectBestModel?: (result: ModelBenchmarkResult) => void;
+  selectedBestModelId?: string | null;
 }
 
-export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({ results }) => {
+export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({
+  results,
+  onSelectBestModel,
+  selectedBestModelId,
+}) => {
   const [priority, setPriority] = useState<PriorityOption>('BALANCED');
 
   if (results.length === 0) return null;
@@ -47,12 +53,17 @@ export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({ resu
     justification = `Optimal balance of high accuracy (${winner.accuracy.overallAccuracy}%), low latency (${formatLatency(winner.latencyMs)}), and low cost (${costInrStr}).`;
   }
 
-  const triggerConfetti = () => {
+  const isAlreadySelected = selectedBestModelId === winner.modelId;
+
+  const handleSelectWinner = () => {
     confetti({
       particleCount: 60,
       spread: 70,
       origin: { y: 0.6 },
     });
+    if (onSelectBestModel) {
+      onSelectBestModel(winner);
+    }
   };
 
   return (
@@ -121,7 +132,11 @@ export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({ resu
       </div>
 
       {/* Recommended Model Highlight Box */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-xl border border-cyan-500/40 bg-cyan-950/20 p-4">
+      <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-xl border p-4 transition-all ${
+        isAlreadySelected
+          ? 'border-emerald-500/60 bg-emerald-950/20 shadow-lg shadow-emerald-500/10'
+          : 'border-cyan-500/40 bg-cyan-950/20'
+      }`}>
         <div className="flex items-start space-x-3">
           <div className="rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 p-3 text-white shadow-lg shadow-cyan-500/30">
             <CheckCircle2 className="h-6 w-6" />
@@ -141,10 +156,15 @@ export const RecommendationWizard: React.FC<RecommendationWizardProps> = ({ resu
         </div>
 
         <button
-          onClick={triggerConfetti}
-          className="self-start md:self-center shrink-0 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition-all active:scale-95"
+          onClick={handleSelectWinner}
+          className={`self-start md:self-center shrink-0 rounded-xl px-4 py-2 text-xs font-bold shadow-lg transition-all active:scale-95 flex items-center space-x-1.5 ${
+            isAlreadySelected
+              ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/20'
+              : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/20'
+          }`}
         >
-          Select Winner for Production
+          <CheckCircle2 className="h-4 w-4" />
+          <span>{isAlreadySelected ? 'Selected Production Winner' : 'Select Winner for Production'}</span>
         </button>
       </div>
     </div>
