@@ -58,30 +58,30 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     return (
       <div
         onClick={() => onSelectBestModel && onSelectBestModel(model)}
-        className={`relative overflow-hidden rounded-2xl border p-4 shadow-xl transition-all cursor-pointer group ${
+        className={`relative overflow-hidden rounded-xl border p-3 shadow-md transition-all cursor-pointer group ${
           isSelected
-            ? 'border-emerald-500 bg-emerald-950/20 ring-2 ring-emerald-500/50'
-            : `${borderColor} bg-slate-900/80 hover:border-cyan-500/50`
+            ? 'border-emerald-500 bg-emerald-950/20 ring-1 ring-emerald-500/50'
+            : `${borderColor} bg-slate-900/60 hover:border-cyan-500/50`
         }`}
       >
         <div className="flex items-center justify-between">
-          <span className={`text-xs font-bold uppercase tracking-wider ${accentColor}`}>
+          <span className={`text-[10px] font-extrabold uppercase tracking-wider ${accentColor}`}>
             {title}
           </span>
-          <div className="rounded-lg bg-slate-800 p-2 text-white group-hover:scale-110 transition-transform">
+          <div className="rounded-lg bg-slate-800/80 p-1.5 text-white group-hover:scale-105 transition-transform">
             {icon}
           </div>
         </div>
 
-        <div className="mt-3 space-y-0.5">
+        <div className="mt-2 space-y-0.5">
           <div className="flex items-center space-x-1.5">
-            <h4 className="text-base font-black text-white">{model.modelName}</h4>
-            {isSelected && <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />}
+            <h4 className="text-sm font-extrabold text-white truncate">{model.modelName}</h4>
+            {isSelected && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
           </div>
-          <p className="text-xs text-slate-400">{model.providerName}</p>
+          <p className="text-[11px] text-slate-400">{model.providerName}</p>
         </div>
 
-        <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2 text-xs">
+        <div className="mt-2.5 flex items-center justify-between border-t border-slate-800/80 pt-1.5 text-xs font-mono">
           {metricText}
         </div>
       </div>

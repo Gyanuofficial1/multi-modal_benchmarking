@@ -15,6 +15,10 @@ import {
   CheckCircle2,
   FileCode,
   FileImage,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { ResumeFileItem } from '../types/benchmark';
 import { SUPPORTED_MODELS, formatInrPer1M } from '../services/pricingMatrix';
@@ -31,7 +35,6 @@ interface ResumeInputPanelProps {
   isRunning: boolean;
 }
 
-// Blank Initial JSON schema by default
 const DEFAULT_INITIAL_JSON = {};
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -286,6 +289,7 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
 
   const [systemPrompt, setSystemPrompt] = useState<string>(PRESET_PROMPTS['initial-parsing']);
   const [selectedPreset, setSelectedPreset] = useState<string>('initial-parsing');
+  const [isPromptExpanded, setIsPromptExpanded] = useState<boolean>(false);
 
   const handlePresetChange = (presetId: string) => {
     setSelectedPreset(presetId);
@@ -315,13 +319,16 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
   const [loadedResumes, setLoadedResumes] = useState<ResumeFileItem[]>([]);
   const [activeResumeIndex, setActiveResumeIndex] = useState<number>(0);
 
-  // Start with blank JSON string
+  // Active Tab for Content vs Expected JSON
+  const [activeInputTab, setActiveInputTab] = useState<'preview' | 'expected'>('preview');
+
+  // Expected JSON state
   const [expectedJsonStr, setExpectedJsonStr] = useState<string>('{\n  \n}');
   const [jsonSyntaxError, setJsonSyntaxError] = useState<string | null>(null);
   const [fileProcessingMsg, setFileProcessingMsg] = useState<string | null>(null);
 
-  // Selected models list (empty by default)
-  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  // Selected models list (all models selected by default for easy benchmarking!)
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>(SUPPORTED_MODELS.map((m) => m.id));
   const [globalExtractionMode, setGlobalExtractionMode] = useState<'TEXT_ONLY' | 'AUTO' | 'FILE_ONLY'>('AUTO');
   const [isS3Enabled, setIsS3Enabled] = useState<boolean>(false);
 
@@ -357,8 +364,6 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
     return null;
   };
 
-
-  // Track active resume state changes during render to avoid useEffect state updates
   const [prevActiveResumeId, setPrevActiveResumeId] = useState<string | null>(null);
   const activeItem = loadedResumes[activeResumeIndex];
   const activeItemId = activeItem ? activeItem.id : null;
@@ -376,34 +381,32 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
     }
   }
 
-  // Direct PDF, ZIP, Image or Doc file drop/select handler
+  // File upload handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setFileProcessingMsg('Analyzing file content & extracting text...');
+    setFileProcessingMsg('Extracting text & analyzing file...');
     try {
       const file = files[0];
       const lowerName = file.name.toLowerCase();
 
       if (lowerName.endsWith('.zip')) {
-        setFileProcessingMsg('Uploading ZIP file to server and extracting...');
+        setFileProcessingMsg('Processing ZIP archive on server...');
         const base64Data = await fileToBase64(file);
         const res = await fetch('/api/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileName: file.name, base64Data, mimeType: file.type }),
         });
-        if (!res.ok) {
-          throw new Error(`Upload failed: ${res.statusText}`);
-        }
+        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
         const data = await res.json();
         if (data.isZip && data.items) {
           setLoadedResumes(data.items);
           setActiveResumeIndex(0);
-          setFileProcessingMsg(`Loaded & extracted ${data.items.length} file(s) on server and uploaded to S3!`);
+          setFileProcessingMsg(`Loaded ${data.items.length} resume(s) from ZIP!`);
         } else {
-          throw new Error(data.message || 'Server did not return items for the ZIP file');
+          throw new Error(data.message || 'ZIP extraction failed');
         }
       } else {
         const processedItems: ResumeFileItem[] = [];
@@ -412,93 +415,67 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
           processedItems.push(item);
         }
 
-        if (processedItems.length === 0) {
-          setFileProcessingMsg('No supported files found.');
-          return;
-        }
+        if (processedItems.length === 0) return;
 
         if (isS3Enabled) {
-          setFileProcessingMsg('Uploading files to AWS S3...');
+          setFileProcessingMsg('Uploading to S3 storage...');
           const s3UploadedItems: ResumeFileItem[] = [];
           for (const item of processedItems) {
             if (item.base64Data) {
               const s3Key = await uploadToS3(item.fileName, item.base64Data, item.mimeType);
-              if (s3Key) {
-                s3UploadedItems.push({
-                  ...item,
-                  s3Key,
-                });
-              } else {
-                s3UploadedItems.push(item);
-              }
+              s3UploadedItems.push(s3Key ? { ...item, s3Key } : item);
             } else {
               s3UploadedItems.push(item);
             }
           }
           setLoadedResumes(s3UploadedItems);
           setActiveResumeIndex(0);
-          setFileProcessingMsg(`Loaded & uploaded ${s3UploadedItems.length} file(s) to S3!`);
+          setFileProcessingMsg(`Loaded ${s3UploadedItems.length} file(s) with S3 storage.`);
         } else {
           setLoadedResumes(processedItems);
           setActiveResumeIndex(0);
-          setFileProcessingMsg(`Loaded ${processedItems.length} file(s) locally.`);
+          setFileProcessingMsg(`Loaded ${processedItems.length} file(s).`);
         }
       }
     } catch (err) {
-      console.error('File upload error:', err);
-      const errMsg = err instanceof Error ? err.message : 'Failed to process file';
-      setFileProcessingMsg(`Upload error: ${errMsg}`);
+      console.error('Upload error:', err);
+      setFileProcessingMsg(`Upload error: ${err instanceof Error ? err.message : 'Error'}`);
     }
-
-    setTimeout(() => setFileProcessingMsg(null), 4000);
+    setTimeout(() => setFileProcessingMsg(null), 3500);
   };
 
-  // Expected JSON text edit handler with syntax check
   const handleJsonChange = (val: string) => {
     setExpectedJsonStr(val);
     if (!val.trim()) {
       setJsonSyntaxError(null);
       return;
     }
-
     try {
       const parsed = JSON.parse(val);
       setJsonSyntaxError(null);
-
-      // Save to current active resume state
       if (loadedResumes.length > 0 && loadedResumes[activeResumeIndex]) {
         const updated = [...loadedResumes];
         updated[activeResumeIndex].expectedJson = parsed;
         setLoadedResumes(updated);
       }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Invalid JSON syntax';
-      setJsonSyntaxError(errMsg);
+      setJsonSyntaxError(err instanceof Error ? err.message : 'Invalid JSON');
     }
   };
 
-  // Model toggle
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) =>
       prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
     );
   };
 
-  const selectAllModels = () => {
-    setSelectedModelIds(SUPPORTED_MODELS.map((m) => m.id));
-  };
+  const selectAllModels = () => setSelectedModelIds(SUPPORTED_MODELS.map((m) => m.id));
+  const deselectAllModels = () => setSelectedModelIds([]);
 
-  const deselectAllModels = () => {
-    setSelectedModelIds([]);
-  };
-
-  // Submit benchmark run
   const handleSubmit = () => {
     if (jsonSyntaxError || loadedResumes.length === 0) return;
     try {
       const parsedExpected = expectedJsonStr.trim() ? JSON.parse(expectedJsonStr) : {};
-
-      // Clean up base64Data from items if s3Key exists to keep request body extremely small!
       const cleanedResumes = loadedResumes.map(item => {
         if (item.s3Key) {
           const { base64Data, ...rest } = item;
@@ -506,89 +483,64 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         }
         return item;
       });
-
       onRunBatchBenchmark(cleanedResumes, parsedExpected, selectedModelIds, systemPrompt, globalExtractionMode);
     } catch {
-      setJsonSyntaxError('Please resolve JSON syntax errors before running benchmark.');
+      setJsonSyntaxError('Please fix JSON syntax errors first.');
     }
   };
 
-  // Group models by provider in required sequence: Google Direct, OpenAI Direct, Anthropic Direct, Mistral AI Direct, Vertex AI, Azure AI, AWS Bedrock
   const providersGroup = [
     { providerId: 'google', name: 'Google AI Direct' },
     { providerId: 'openai', name: 'OpenAI Direct' },
     { providerId: 'anthropic', name: 'Anthropic Direct' },
-    { providerId: 'mistral', name: 'Mistral AI Direct' },
+    { providerId: 'mistral', name: 'Mistral Direct' },
     { providerId: 'vertex', name: 'Google Vertex AI' },
-    { providerId: 'azure', name: 'Microsoft Azure AI' },
+    { providerId: 'azure', name: 'Azure AI' },
     { providerId: 'bedrock', name: 'AWS Bedrock' },
   ];
 
   const currentActiveResume = loadedResumes[activeResumeIndex];
 
   return (
-    <div className="space-y-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 backdrop-blur-md">
-      {/* 1. Header & File Upload Controls */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-4">
-        <div>
-          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-            <h2 className="text-base font-bold text-white flex items-center space-x-2">
-              <FileText className="h-5 w-5 text-cyan-400" />
-              <span>1. Upload PDF / ZIP Resumes & Ground Truth</span>
-            </h2>
-            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/30">
-              Live API Mode
-            </span>
-            {isS3Enabled && (
-              <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 border border-cyan-500/30">
-                AWS S3 Storage Active
-              </span>
-            )}
+    <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-4 backdrop-blur-md shadow-lg">
+      {/* 1. Sleek Upload & Mode Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div className="flex items-center space-x-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white shadow-md shadow-cyan-500/20 shrink-0">
+            <Upload className="h-5 w-5" />
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Upload PDF files or a <strong>ZIP archive containing up to 100 resumes</strong>.
-          </p>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h2 className="text-sm font-bold text-white">AI Model Benchmark Setup</h2>
+              {isS3Enabled && (
+                <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold text-cyan-300 border border-cyan-500/30">
+                  S3 ACTIVE
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Upload PDF / ZIP resumes, select models, and run parallel benchmarking.
+            </p>
+          </div>
         </div>
 
-        {/* Upload Buttons & Global Extraction Mode Toggle */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Global Extraction Mode Toggle */}
-          <div className="flex items-center space-x-2.5 rounded-xl border border-slate-800 bg-slate-950/60 p-1 shadow-inner">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider pl-2 shrink-0">
-              Extraction:
-            </span>
-            <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800/80 gap-0.5">
+        {/* Action Controls */}
+        <div className="flex items-center space-x-2">
+          {/* Mode Chips */}
+          <div className="flex items-center rounded-lg border border-slate-800 bg-slate-950 p-0.5 text-[10px]">
+            {(['AUTO', 'TEXT_ONLY', 'FILE_ONLY'] as const).map((mode) => (
               <button
-                type="button"
-                onClick={() => setGlobalExtractionMode('TEXT_ONLY')}
-                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${globalExtractionMode === 'TEXT_ONLY'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                key={mode}
+                onClick={() => setGlobalExtractionMode(mode)}
+                className={`rounded-md px-2 py-1 font-bold transition-all ${
+                  globalExtractionMode === mode
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
               >
-                Text Only
+                {mode === 'AUTO' ? 'Auto Mode' : mode === 'TEXT_ONLY' ? 'Text Only' : 'Direct File'}
               </button>
-              <button
-                type="button"
-                onClick={() => setGlobalExtractionMode('AUTO')}
-                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${globalExtractionMode === 'AUTO'
-                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25 font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Auto
-              </button>
-              <button
-                type="button"
-                onClick={() => setGlobalExtractionMode('FILE_ONLY')}
-                className={`rounded-md px-2.5 py-1.5 text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${globalExtractionMode === 'FILE_ONLY'
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/25 font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Only File Upload
-              </button>
-            </div>
+            ))}
           </div>
 
           <input
@@ -602,244 +554,213 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:opacity-90 px-6 py-2.5 text-xs font-extrabold text-white shadow-xl shadow-cyan-600/20 transition-all active:scale-95 cursor-pointer shrink-0"
+            className="flex items-center space-x-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-4 py-1.5 text-xs font-bold text-slate-950 shadow-md shadow-cyan-500/20 transition-all active:scale-95 cursor-pointer shrink-0"
           >
-            <Upload className="h-4 w-4" />
-            <span>Upload Files / ZIP</span>
+            <Upload className="h-3.5 w-3.5" />
+            <span>Upload File / ZIP</span>
           </button>
         </div>
       </div>
 
-      {/* File processing message */}
+      {/* File status alert */}
       {fileProcessingMsg && (
-        <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/30 p-3 text-xs text-cyan-300 flex items-center space-x-2 animate-fadeIn">
+        <div className="rounded-lg bg-cyan-950/40 border border-cyan-500/30 p-2 text-xs text-cyan-300 flex items-center space-x-2">
           <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0" />
           <span>{fileProcessingMsg}</span>
         </div>
       )}
 
-      {/* Multi-Resume Batch Tabs (ONLY rendered when multiple files in ZIP uploaded) */}
+      {/* Batch Resume Tabs */}
       {loadedResumes.length > 1 && (
-        <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3 space-y-2">
-          <div className="flex items-center justify-between text-xs text-indigo-300 font-bold">
-            <span className="flex items-center space-x-1.5">
-              <Archive className="h-4 w-4 text-indigo-400" />
-              <span>Batch Resumes Loaded ({loadedResumes.length} PDF Files)</span>
-            </span>
-            <span className="text-[11px] text-slate-400">Click tab to select active resume</span>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-            {loadedResumes.map((resItem, idx) => {
-              const getFileIcon = (type: string) => {
-                if (type === 'image') return <FileImage className="h-3 w-3" />;
-                if (type === 'docx' || type === 'doc') return <FileCode className="h-3 w-3 text-cyan-400" />;
-                return <FileText className="h-3 w-3" />;
-              };
-              return (
-                <button
-                  key={resItem.id}
-                  onClick={() => setActiveResumeIndex(idx)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-mono transition-all flex items-center space-x-1 ${activeResumeIndex === idx
-                    ? 'bg-indigo-500 text-white font-bold shadow-md shadow-indigo-500/30'
-                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
-                    }`}
-                >
-                  {getFileIcon(resItem.fileType)}
-                  <span>{resItem.fileName}</span>
-                  {resItem.s3Key && (
-                    <span className="ml-1 text-[8px] bg-cyan-500/20 text-cyan-300 px-1 rounded border border-cyan-500/30 font-extrabold uppercase">S3</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs border-b border-slate-800/80">
+          <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider shrink-0 pr-1">
+            Resumes ({loadedResumes.length}):
+          </span>
+          {loadedResumes.map((res, idx) => (
+            <button
+              key={res.id}
+              onClick={() => setActiveResumeIndex(idx)}
+              className={`rounded-lg px-2.5 py-1 text-xs font-mono shrink-0 transition-all ${
+                activeResumeIndex === idx
+                  ? 'bg-indigo-500 text-white font-bold shadow-sm'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+              }`}
+            >
+              {res.fileName}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* 2. System Extraction Prompt Box */}
-      <div className="space-y-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <label className="text-xs font-bold text-cyan-300 flex items-center space-x-1.5 uppercase tracking-wider">
+      {/* 2. Sleek Compact System Prompt Accordion */}
+      <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
             <MessageSquare className="h-4 w-4 text-cyan-400" />
-            <span>System Extraction Prompt (AI Instructions)</span>
-          </label>
+            <span className="text-xs font-bold text-slate-200">System Extraction Prompt</span>
+            <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20 font-mono">
+              Preset: {selectedPreset}
+            </span>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-slate-400 font-semibold">Select AI Task Preset:</span>
+          <div className="flex items-center space-x-2">
             <select
               value={selectedPreset}
               onChange={(e) => handlePresetChange(e.target.value)}
-              className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs text-cyan-300 focus:border-cyan-500 focus:outline-none cursor-pointer hover:border-slate-700 transition-all font-semibold"
+              className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 focus:outline-none cursor-pointer"
             >
               {PRESET_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id} className="bg-slate-950 text-slate-200">
+                <option key={opt.id} value={opt.id}>
                   {opt.name}
                 </option>
               ))}
             </select>
+
             <button
-              onClick={handleClearPrompt}
-              className="text-[10px] text-slate-400 hover:text-cyan-300 underline shrink-0 ml-1"
+              onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+              className="flex items-center space-x-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-xs font-semibold text-cyan-300 border border-slate-700 transition-colors"
             >
-              Clear Prompt
+              <span>{isPromptExpanded ? 'Hide Prompt' : 'Edit Prompt'}</span>
+              {isPromptExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
           </div>
         </div>
-        <textarea
-          value={systemPrompt}
-          onChange={(e) => handlePromptChange(e.target.value)}
-          rows={6}
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-cyan-100 placeholder-slate-600 focus:border-cyan-500 focus:outline-none min-h-[140px] resize-y"
-          placeholder="Enter prompt instructions for AI models..."
-        />
+
+        {isPromptExpanded && (
+          <div className="space-y-2 pt-1 animate-fadeIn">
+            <textarea
+              value={systemPrompt}
+              onChange={(e) => handlePromptChange(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-slate-800 bg-slate-900 p-2.5 font-mono text-xs text-cyan-100 placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
+              placeholder="Enter custom prompt instructions for AI models..."
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={handleClearPrompt}
+                className="text-[10px] text-slate-400 hover:text-cyan-300 underline"
+              >
+                Clear Prompt Text
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 3. Text Input Grid with Mode Indicator & Dedicated Ground Truth JSON */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Left: Input Text Data / PDF Mode Indicator */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
-              <FileText className="h-4 w-4 text-emerald-400" />
-              <span>
-                Content Preview: <strong className="text-white font-mono">{currentActiveResume?.fileName || 'No file selected'}</strong>
-              </span>
-            </label>
+      {/* 3. Compact Tabbed Content & Expected JSON View */}
+      {loadedResumes.length > 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-2">
+          {/* Tabs header */}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setActiveInputTab('preview')}
+                className={`flex items-center space-x-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                  activeInputTab === 'preview'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>Extracted Text Preview ({currentActiveResume?.fileName})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveInputTab('expected')}
+                className={`flex items-center space-x-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                  activeInputTab === 'expected'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Code2 className="h-3.5 w-3.5" />
+                <span>Expected Ground Truth JSON</span>
+              </button>
+            </div>
 
             {currentActiveResume && (
-              currentActiveResume.extractionMode === 'TEXT_PROMPT' ? (
-                <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/30 flex items-center space-x-1">
-                  <FileCode className="h-3 w-3" />
-                  <span>Text Mode</span>
-                </span>
-              ) : (
-                <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-400 border border-amber-500/30 flex items-center space-x-1">
-                  <FileImage className="h-3 w-3" />
-                  <span>Multimodal Mode</span>
-                </span>
-              )
+              <span className="text-[10px] text-slate-400 font-mono">
+                {currentActiveResume.extractionMode === 'TEXT_PROMPT' ? '⚡ Clean Text' : '📷 Multimodal PDF'}
+              </span>
             )}
           </div>
-          <textarea
-            value={currentActiveResume?.extractedText || ''}
-            onChange={(e) => {
-              if (loadedResumes.length > 0) {
-                const updated = [...loadedResumes];
-                updated[activeResumeIndex].extractedText = e.target.value;
-                setLoadedResumes(updated);
-              }
-            }}
-            rows={10}
-            className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-200 placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
-            placeholder="Parsed PDF text content will appear here when a file is uploaded above..."
-          />
-        </div>
 
-        {/* Right: Expected Ground Truth JSON for Active Selected Resume (BLANK BY DEFAULT) */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
-              <Code2 className="h-4 w-4 text-purple-400" />
-              <span>
-                Expected Ground Truth JSON {currentActiveResume?.fileName ? `for: ${currentActiveResume.fileName}` : ''}
-              </span>
-            </label>
-            {jsonSyntaxError && (
-              <span className="text-[11px] text-red-400 flex items-center space-x-1 font-semibold">
-                <AlertCircle className="h-3 w-3" />
-                <span>JSON Syntax Error</span>
-              </span>
-            )}
-          </div>
-          <textarea
-            value={expectedJsonStr}
-            onChange={(e) => handleJsonChange(e.target.value)}
-            rows={10}
-            className={`w-full rounded-xl border p-3 font-mono text-xs text-purple-200 placeholder-slate-600 focus:outline-none ${jsonSyntaxError
-              ? 'border-red-500/50 bg-red-950/10'
-              : 'border-slate-800 bg-slate-950 focus:border-purple-500'
+          {/* Active Tab Content */}
+          {activeInputTab === 'preview' ? (
+            <textarea
+              value={currentActiveResume?.extractedText || ''}
+              onChange={(e) => {
+                if (loadedResumes.length > 0) {
+                  const updated = [...loadedResumes];
+                  updated[activeResumeIndex].extractedText = e.target.value;
+                  setLoadedResumes(updated);
+                }
+              }}
+              rows={4}
+              className="w-full rounded-lg border border-slate-800 bg-slate-900 p-2.5 font-mono text-xs text-slate-200 placeholder-slate-600 focus:outline-none"
+              placeholder="Extracted text preview..."
+            />
+          ) : (
+            <textarea
+              value={expectedJsonStr}
+              onChange={(e) => handleJsonChange(e.target.value)}
+              rows={4}
+              className={`w-full rounded-lg border p-2.5 font-mono text-xs text-purple-200 placeholder-slate-600 focus:outline-none ${
+                jsonSyntaxError ? 'border-red-500/50 bg-red-950/10' : 'border-slate-800 bg-slate-900'
               }`}
-            placeholder="Paste expected JSON object here or leave blank for schema extraction..."
-          />
+              placeholder="Paste ground truth JSON object here..."
+            />
+          )}
         </div>
-      </div>
+      )}
 
-      {/* 4. Model Selector Grid */}
-      <div className="space-y-3 border-t border-slate-800 pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-bold text-white tracking-wide uppercase">
-              2. Select AI Models to Benchmark ({selectedModelIds.length} Selected)
-            </h3>
-            <p className="text-[11px] text-slate-400">
-              Evaluates live API latency, token cost, and JSON field accuracy across all {loadedResumes.length} PDF resumes.
-            </p>
-          </div>
+      {/* 4. Lightweight Compact Model Selector */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <button
-              onClick={selectAllModels}
-              className="text-xs text-cyan-400 hover:text-cyan-300 font-medium"
-            >
+            <Sparkles className="h-4 w-4 text-cyan-400" />
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              Select AI Models ({selectedModelIds.length} / {SUPPORTED_MODELS.length})
+            </h3>
+          </div>
+
+          <div className="flex items-center space-x-2 text-xs">
+            <button onClick={selectAllModels} className="text-cyan-400 hover:text-cyan-300 font-semibold">
               Select All
             </button>
             <span className="text-slate-700">|</span>
-            <button
-              onClick={deselectAllModels}
-              className="text-xs text-slate-400 hover:text-slate-300 font-medium"
-            >
+            <button onClick={deselectAllModels} className="text-slate-400 hover:text-slate-300 font-semibold">
               Deselect All
             </button>
           </div>
         </div>
 
-        {/* Model Checkbox Cards Grouped by Provider */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {providersGroup.map((group) => {
-            const modelsInGroup = SUPPORTED_MODELS.filter((m) => m.provider === group.providerId);
-            if (modelsInGroup.length === 0) return null;
-
+        {/* Compact Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+          {SUPPORTED_MODELS.map((model) => {
+            const isChecked = selectedModelIds.includes(model.id);
             return (
               <div
-                key={group.providerId}
-                className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-3 space-y-2"
+                key={model.id}
+                onClick={() => toggleModel(model.id)}
+                className={`rounded-xl p-2 cursor-pointer transition-all border flex flex-col justify-between space-y-1 text-xs ${
+                  isChecked
+                    ? 'border-cyan-500/60 bg-cyan-950/30 text-white shadow-sm'
+                    : 'border-slate-800/80 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                }`}
               >
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  {group.name}
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] truncate text-white">{model.name}</span>
+                  {isChecked ? (
+                    <CheckSquare className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+                  )}
                 </div>
-                <div className="space-y-1.5">
-                  {modelsInGroup.map((model) => {
-                    const isChecked = selectedModelIds.includes(model.id);
-                    return (
-                      <div
-                        key={model.id}
-                        onClick={() => toggleModel(model.id)}
-                        className={`flex items-center justify-between rounded-lg p-2 cursor-pointer transition-all border ${isChecked
-                          ? 'bg-cyan-500/10 border-cyan-500/30 text-white'
-                          : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
-                          }`}
-                      >
-                        <div className="flex items-center space-x-2">
-                          {isChecked ? (
-                            <CheckSquare className="h-4 w-4 text-cyan-400 shrink-0" />
-                          ) : (
-                            <Square className="h-4 w-4 text-slate-600 shrink-0" />
-                          )}
-                          <div>
-                            <div className="text-xs font-semibold text-slate-200">
-                              {model.name}
-                            </div>
-                            <div className="text-[10px] text-emerald-400/90 font-mono">
-                              {formatInrPer1M(model.inputCostPer1M)}/1M in · {formatInrPer1M(model.outputCostPer1M)}/1M out
-                            </div>
-                          </div>
-                        </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${model.badgeColor}`}>
-                          {model.providerName.split(' ')[0]}
-                        </span>
-                      </div>
-                    );
-                  })}
+
+                <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono pt-1 border-t border-slate-800/60">
+                  <span>{model.providerName.split(' ')[0]}</span>
+                  <span className="text-emerald-400">{formatInrPer1M(model.inputCostPer1M)}</span>
                 </div>
               </div>
             );
@@ -847,33 +768,34 @@ export const ResumeInputPanel: React.FC<ResumeInputPanelProps> = ({
         </div>
       </div>
 
-      {/* 5. Action Trigger Button */}
-      <div className="flex items-center justify-between pt-2">
+      {/* 5. Sleek Run Action Trigger */}
+      <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
         <div className="text-xs text-slate-400 font-mono">
           {loadedResumes.length > 0 ? (
-            <>Ready to test: <strong className="text-cyan-300">{loadedResumes.length} PDF Resume(s)</strong> × <strong className="text-purple-300">{selectedModelIds.length} AI Models</strong> = {loadedResumes.length * selectedModelIds.length} Total Runs</>
+            <>Target: <strong className="text-cyan-300">{loadedResumes.length} File(s)</strong> × <strong className="text-purple-300">{selectedModelIds.length} Model(s)</strong> = {loadedResumes.length * selectedModelIds.length} Parallel Runs</>
           ) : (
-            <>Upload a PDF resume using the top button to start benchmark</>
+            <>Upload a PDF resume above to run live benchmark</>
           )}
         </div>
 
         <button
           onClick={handleSubmit}
           disabled={isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0}
-          className={`flex items-center space-x-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-xl transition-all ${isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0
-            ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-            : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:opacity-90 shadow-cyan-500/20 active:scale-[0.98]'
-            }`}
+          className={`flex items-center space-x-2 rounded-xl px-6 py-2.5 text-xs font-extrabold text-white shadow-lg transition-all ${
+            isRunning || selectedModelIds.length === 0 || !!jsonSyntaxError || loadedResumes.length === 0
+              ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+              : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:opacity-90 shadow-cyan-500/20 active:scale-95'
+          }`}
         >
           {isRunning ? (
             <>
-              <RefreshCw className="h-5 w-5 animate-spin text-cyan-300" />
-              <span>Benchmarking {loadedResumes.length} Resume(s)...</span>
+              <RefreshCw className="h-4 w-4 animate-spin text-cyan-300" />
+              <span>Running Benchmarks...</span>
             </>
           ) : (
             <>
-              <Play className="h-5 w-5 text-cyan-300 fill-cyan-300" />
-              <span>Run Live Multi-Model Benchmark ({loadedResumes.length * selectedModelIds.length} Evaluation Runs)</span>
+              <Play className="h-4 w-4 text-cyan-300 fill-cyan-300" />
+              <span>Run Live Benchmark ({loadedResumes.length * selectedModelIds.length} Runs)</span>
             </>
           )}
         </button>

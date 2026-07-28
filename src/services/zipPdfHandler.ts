@@ -23,46 +23,76 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   }
 }
 
-// Dynamically extract clean text using pdfjs-dist on client browser
+// Helper to check if extracted string is genuine readable text vs raw binary stream garbage
+export function isReadableText(text: string): boolean {
+  if (!text || text.trim().length < 10) return false;
+  // If text starts with raw PDF file header or contains stream markers, it's binary stream
+  if (text.startsWith('%PDF-') || text.includes('endstream') || text.includes('FlateDecode') || text.includes('XObject')) {
+    return false;
+  }
+  // Count printable characters (letters, numbers, basic punctuation, spaces, non-ASCII UTF-8 characters)
+  const printableMatches = text.match(/[\w\s.,!?:;\-()@/"'#&%$+\=–—]/g) || [];
+  const ratio = printableMatches.length / text.length;
+  return ratio > 0.65;
+}
+
+// Dynamically extract clean text using pdfjs-dist (Works on both Client Browser & Node.js Server)
 export async function extractTextFromPdfBuffer(arrayBuffer: ArrayBuffer): Promise<PdfParseResult> {
-  if (typeof window !== 'undefined') {
-    try {
-      const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-
-      const pdfData = new Uint8Array(arrayBuffer.slice(0));
-      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-      const pdfDocument = await loadingTask.promise;
-      
-      let extractedPagesText: string[] = [];
-
-      for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-        const page = await pdfDocument.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const pageStrings = textContent.items
-          .map((item: any) => ('str' in item ? item.str : ''))
-          .filter((str: string) => str.trim().length > 0);
-        
-        if (pageStrings.length > 0) {
-          extractedPagesText.push(pageStrings.join(' '));
-        }
-      }
-
-      const fullText = extractedPagesText.join('\n\n').replace(/[ \t]+/g, ' ').trim();
-
-      if (fullText.length > 30) {
-        return {
-          extractedText: fullText,
-          isScannedImagePdf: false,
-          extractionMode: 'TEXT_PROMPT',
-        };
-      }
-    } catch (err) {
-      console.warn('PDF.js dynamic parsing warning:', err);
+  // 1. Try PDF.js parsing (Works in Browser and Node.js)
+  try {
+    let pdfjsLib: any;
+    if (typeof window !== 'undefined') {
+      pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      } catch (wErr) {}
+    } else {
+      // Node.js environment (Server API routes)
+      pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      try {
+        const path = await import('path');
+        const { pathToFileURL } = await import('url');
+        const workerPath = path.resolve(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+      } catch (wErr) {}
     }
+
+    const pdfData = new Uint8Array(arrayBuffer.slice(0));
+    const loadingTask = pdfjsLib.getDocument({
+      data: pdfData,
+      disableWorker: true,
+      verbosity: 0,
+    });
+    const pdfDocument = await loadingTask.promise;
+    
+    let extractedPagesText: string[] = [];
+
+    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+      const page = await pdfDocument.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const pageStrings = textContent.items
+        .map((item: any) => ('str' in item ? item.str : ''))
+        .filter((str: string) => str.trim().length > 0);
+      
+      if (pageStrings.length > 0) {
+        extractedPagesText.push(pageStrings.join(' '));
+      }
+    }
+
+    const fullText = extractedPagesText.join('\n\n').replace(/[ \t]+/g, ' ').trim();
+
+    if (fullText.length > 20 && isReadableText(fullText)) {
+      return {
+        extractedText: fullText,
+        isScannedImagePdf: false,
+        extractionMode: 'TEXT_PROMPT',
+      };
+    }
+  } catch (err) {
+    console.warn('PDF.js dynamic parsing warning:', err);
   }
 
-  // Stream extraction fallback
+  // 2. Stream extraction fallback (Only for clean uncompressed ASCII strings, avoiding binary garbage)
   try {
     const bytes = new Uint8Array(arrayBuffer.slice(0));
     const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
@@ -76,7 +106,8 @@ export async function extractTextFromPdfBuffer(arrayBuffer: ArrayBuffer): Promis
         if (stringMatches) {
           stringMatches.forEach((str) => {
             const cleaned = str.substring(1, str.length - 1).trim();
-            if (cleaned.length > 0 && !cleaned.startsWith('/') && !cleaned.includes('\\')) {
+            // Strictly check printable ASCII text
+            if (cleaned.length > 0 && /^[\x20-\x7E\s]+$/.test(cleaned) && !cleaned.startsWith('/') && !cleaned.includes('\\')) {
               textSegments.push(cleaned);
             }
           });
@@ -85,7 +116,7 @@ export async function extractTextFromPdfBuffer(arrayBuffer: ArrayBuffer): Promis
     }
 
     const fallbackText = textSegments.join(' ').replace(/\s+/g, ' ').trim();
-    if (fallbackText.length > 50 && !fallbackText.startsWith('%PDF-')) {
+    if (fallbackText.length > 30 && isReadableText(fallbackText)) {
       return {
         extractedText: fallbackText,
         isScannedImagePdf: false,
@@ -94,8 +125,10 @@ export async function extractTextFromPdfBuffer(arrayBuffer: ArrayBuffer): Promis
     }
   } catch (fallbackErr) {}
 
+  // 3. If text cannot be extracted cleanly (scanned image or complex binary PDF),
+  // DO NOT output binary garbage! Mark as Scanned/Multimodal PDF so AI receives direct Base64 file payload!
   return {
-    extractedText: '[Scanned Image PDF Detected: Text could not be extracted directly. Direct Base64 PDF Payload sent to AI models.]',
+    extractedText: '[Scanned Image or Complex PDF: Direct Base64 PDF payload sent to AI models for vision/multimodal parsing.]',
     isScannedImagePdf: true,
     extractionMode: 'DIRECT_FILE_MULTIMODAL',
   };

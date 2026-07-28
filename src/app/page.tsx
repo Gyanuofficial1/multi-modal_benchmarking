@@ -15,6 +15,7 @@ import { ModelBenchmarkResult, ResumeFileItem } from '../types/benchmark';
 import { SUPPORTED_MODELS, formatINR, formatLatency } from '../services/pricingMatrix';
 import { benchmarkSingleModel } from '../services/aiProviders';
 import { FileText, Archive, Award, Code2, Columns, CheckCircle2 } from 'lucide-react';
+import { MultiModelColorDiffModal } from '../components/Dashboard/MultiModelColorDiffModal';
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -31,6 +32,7 @@ export default function Home() {
   const [selectedHeadToHeadIds, setSelectedHeadToHeadIds] = useState<string[]>([]);
   const [isHeadToHeadOpen, setIsHeadToHeadOpen] = useState<boolean>(false);
   const [isCodeModalOpen, setIsCodeModalOpen] = useState<boolean>(false);
+  const [activeDiffResume, setActiveDiffResume] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
@@ -79,6 +81,17 @@ export default function Home() {
       });
 
       await Promise.all(modelPromises);
+    }
+
+    // Auto-select top winning model for production
+    const valid = cumulativeResults.filter((r) => r.status === 'SUCCESS');
+    if (valid.length > 0) {
+      const topModel = [...valid].sort((a, b) => {
+        const scoreA = a.accuracy.overallAccuracy * 0.5 + Math.max(0, 100 - a.latencyMs / 25) * 0.25;
+        const scoreB = b.accuracy.overallAccuracy * 0.5 + Math.max(0, 100 - b.latencyMs / 25) * 0.25;
+        return scoreB - scoreA;
+      })[0];
+      setSelectedBestModel(topModel);
     }
 
     setIsRunning(false);
@@ -152,7 +165,7 @@ export default function Home() {
       />
 
       {/* Main Content Area */}
-      <main className="relative z-10 mx-auto max-w-7xl px-4 py-8 space-y-8 sm:px-6">
+      <main className="relative z-10 mx-auto max-w-7xl px-4 py-6 space-y-6 sm:px-6">
         {/* Input & Prompt Panel (PDF & ZIP Upload) */}
         <ResumeInputPanel
           onRunBatchBenchmark={handleRunBatchBenchmark}
@@ -161,58 +174,7 @@ export default function Home() {
 
         {/* Results Section */}
         {allBatchResults.length > 0 && (
-          <section className="space-y-8 animate-fadeIn">
-            {/* Action & Winner Floating Banner */}
-            <div className="sticky top-20 z-30 rounded-2xl border border-cyan-500/40 bg-slate-900/90 p-4 backdrop-blur-xl shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white shadow-lg shadow-cyan-500/30">
-                  <Award className="h-6 w-6" />
-                </div>
-
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-cyan-400">
-                      Selected Production Model
-                    </span>
-                    {selectedBestModel ? (
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400 border border-emerald-500/30 font-bold flex items-center space-x-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>{selectedBestModel.providerName}</span>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400 italic">None selected yet</span>
-                    )}
-                  </div>
-
-                  <h3 className="text-lg font-black text-white">
-                    {selectedBestModel ? selectedBestModel.modelName : 'Select a Model to Deploy'}
-                  </h3>
-                </div>
-              </div>
-
-              {/* Banner Action Buttons */}
-              <div className="flex flex-wrap items-center gap-3">
-                {selectedHeadToHeadIds.length >= 2 && (
-                  <button
-                    onClick={() => setIsHeadToHeadOpen(true)}
-                    className="flex items-center space-x-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
-                  >
-                    <Columns className="h-4 w-4" />
-                    <span>Compare Head-to-Head ({selectedHeadToHeadIds.length})</span>
-                  </button>
-                )}
-
-                {selectedBestModel && (
-                  <button
-                    onClick={() => setIsCodeModalOpen(true)}
-                    className="flex items-center space-x-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 px-4 py-2 text-xs font-extrabold text-slate-950 shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
-                  >
-                    <Code2 className="h-4 w-4" />
-                    <span>Get Integration SDK Code</span>
-                  </button>
-                )}
-              </div>
-            </div>
+          <section className="space-y-6 animate-fadeIn">
 
             {/* Batch Filter Bar (If multiple resumes evaluated) */}
             {uniqueResumeNames.length > 1 && (
@@ -275,6 +237,7 @@ export default function Home() {
               selectedBestModelId={selectedBestModel?.modelId}
               selectedHeadToHeadIds={selectedHeadToHeadIds}
               onToggleHeadToHead={handleToggleHeadToHead}
+              onOpenMultiAiDiff={(rName) => setActiveDiffResume(rName)}
             />
           </section>
         )}
@@ -304,6 +267,17 @@ export default function Home() {
         <BestModelCodeModal
           result={selectedBestModel}
           onClose={() => setIsCodeModalOpen(false)}
+        />
+      )}
+
+      {/* Render Multi-AI Color-Coded Diff Modal at root viewport level */}
+      {activeDiffResume && (
+        <MultiModelColorDiffModal
+          resumeFileName={activeDiffResume}
+          modelResults={allBatchResults.filter((r) => r.resumeFileName === activeDiffResume || (!r.resumeFileName && activeDiffResume === 'Resume'))}
+          onClose={() => setActiveDiffResume(null)}
+          onSelectBestModel={handleSelectBestModel}
+          selectedBestModelId={selectedBestModel?.modelId}
         />
       )}
     </div>
