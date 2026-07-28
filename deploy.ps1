@@ -26,9 +26,9 @@ Write-Host "`n[2/5] Transferring files to remote server..." -ForegroundColor Cya
 scp -i $PemPath project.tar.gz .env.local "${Server}:/home/Gyanu/"
 Write-Host "Successfully transferred files." -ForegroundColor Green
 
-# 3. Extract and Build on Server
-Write-Host "`n[3/5] Extracting and building on remote server (this might take a minute)..." -ForegroundColor Cyan
-$RemoteBuildCmd = "mkdir -p $RemotePath && mv /home/Gyanu/project.tar.gz /home/Gyanu/.env.local $RemotePath/ && cd $RemotePath && tar -xzf project.tar.gz && rm project.tar.gz && npm install && npm run build"
+# 3. Extract and Build on Server (with RAM optimization flags)
+Write-Host "`n[3/5] Extracting and building on remote server..." -ForegroundColor Cyan
+$RemoteBuildCmd = "mkdir -p $RemotePath && mv /home/Gyanu/project.tar.gz /home/Gyanu/.env.local $RemotePath/ && cd $RemotePath && tar -xzf project.tar.gz && rm project.tar.gz && npm install --no-audit --prefer-offline && NODE_OPTIONS='--max-old-space-size=1536' npm run build"
 ssh -i $PemPath $Server $RemoteBuildCmd
 Write-Host "Successfully built application on server." -ForegroundColor Green
 

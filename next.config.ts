@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* Optimize RAM usage during Next.js production build */
+  experimental: {
+    cpus: 1,
+  },
   async redirects() {
     return [
       {
